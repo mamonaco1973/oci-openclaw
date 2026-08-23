@@ -58,7 +58,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 
 ---
 
-## THE FIVE THINGS THAT WILL BITE YOU
+## THE SIX THINGS THAT WILL BITE YOU
 
 These are the differences that actually cost time. Everything else ported
 mechanically from `aws-openclaw`.
@@ -145,6 +145,22 @@ intermittently, depending on how fast the builder came up.
 There is **no agent to install**, unlike AWS. The Oracle Cloud Agent ships in
 the Canonical base image, and this design does not need it: access is direct
 RDP to a public IP, not a managed session broker.
+
+### 6. Identity Domains require an email on every user
+
+A tenancy backed by Identity Domains (IDCS) rejects `CreateUser` outright
+when no primary email is set:
+
+```
+400-IdcsConversionError ... "The primary email must be specified."
+  messageId: error.identity.user.primaryEmailNotSpecified
+```
+
+`openclaw-svc` is a machine identity that never signs in and never receives
+mail, so `var.svc_user_email` defaults to the reserved `.invalid` TLD
+(RFC 2606) — format-valid, guaranteed undeliverable, impossible to mistake
+for a real mailbox. Override it only if IDCS demands a resolvable domain or
+the address collides with an existing user.
 
 ---
 

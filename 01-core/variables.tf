@@ -37,3 +37,25 @@ variable "email_sender" {
   type        = string
   default     = ""
 }
+
+# ==============================================================================
+# SECTION: Service User Email
+# ------------------------------------------------------------------------------
+# Tenancies backed by Identity Domains (IDCS) reject CreateUser without a
+# primary email:
+#   400-IdcsConversionError ... "The primary email must be specified."
+#     messageId: error.identity.user.primaryEmailNotSpecified
+#
+# openclaw-svc is a machine identity that never signs in and never receives
+# mail, so this defaults to the reserved .invalid TLD (RFC 2606) — format-valid,
+# guaranteed undeliverable, and impossible to confuse with a real mailbox.
+#
+# Override only if IDCS is configured to demand a resolvable domain, or if the
+# address collides with an existing user in the tenancy.
+# ==============================================================================
+
+variable "svc_user_email" {
+  description = "Primary email for the openclaw-svc machine user — required by Identity Domains"
+  type        = string
+  default     = "openclaw-svc@example.invalid"
+}
