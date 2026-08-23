@@ -61,15 +61,18 @@
 #     0.38s  xai.grok-4.20-non-reasoning
 #     0.57s  google.gemini-2.5-flash
 #
-# gpt-oss-120b is faster and is what oci-resume-app runs, but that project only
-# needs single-shot completions. Community LiteLLM configs for OCI gpt-oss
-# explicitly set supports_function_calling=false; a model that cannot call tools
-# cannot drive OpenClaw. Maverick is natively tool-calling, nearly as fast, and
-# open-weight -- so it carries the same "no upstream vendor retirement schedule"
-# argument that made gpt-oss attractive, unlike Gemini 2.5 (being retired on
-# GCP) or the Grok line (ten variants retired on a single day, 2026-08-15).
+# Maverick is primary because its tool calling is VERIFIED: it returned a
+# populated tool_calls array through LiteLLM on 2026-08-23. It is nearly as
+# fast as gpt-oss and open-weight, so it carries the same "no upstream vendor
+# retirement schedule" argument -- unlike Gemini 2.5 (being retired on GCP) or
+# the Grok line (ten variants retired on a single day, 2026-08-15).
 #
-# gpt-oss-120b is still deployed, as a non-tool fallback for plain chat.
+# DO NOT assume gpt-oss-120b cannot call tools. Community LiteLLM configs for
+# OCI gpt-oss set supports_function_calling=false, and that was repeated here
+# as fact -- but it was never tested, and observed behaviour contradicts it:
+# gpt-oss-120b drove OpenClaw's Exec tool correctly. Treat the ordering below
+# as preference, not capability, until the per-model tool-calling test has
+# actually been run against each one.
 #
 # VERIFY TOOL CALLING BEFORE TRUSTING A SWAP. check_env.sh probes every model
 # here, but that only proves it answers a plain chat call -- being listed proves

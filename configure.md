@@ -117,7 +117,7 @@ session and nowhere else.
 | LiteLLM 401 / auth error | Verify the master key: `grep master_key /opt/openclaw/litellm-config.yaml` |
 | LiteLLM `NotAuthenticated` / signing error | Check the injected credentials: `sudo cat /etc/litellm.env` and confirm `/etc/litellm-key.pem` exists, is 0600 and owned by `openclaw` |
 | Gen AI 404 "Entity with key not found" | The model is listed but not served in this region. Availability is per-region — run `python3 probe_genai.py --region us-chicago-1` to see what actually answers |
-| Model replies but never calls tools | Expected for `gpt-oss-120b`. Switch `GENAI_PRIMARY` in `genai-config.sh` and re-apply `03-openclaw` |
+| Model replies but never calls tools | Switch `GENAI_PRIMARY` in `genai-config.sh` and re-apply `03-openclaw`. Test any model with the tool-calling curl before assuming it cannot — gpt-oss-120b has been observed driving tools despite community configs claiming otherwise |
 | `oci` CLI fails with `ConfigFileNotFound` | The `--auth instance_principal` flag was omitted. There is no `~/.oci/config` on this box by design |
 | `oci` CLI returns 404 on everything | The instance booted before the dynamic group existed. The principal token caches group membership at boot — **restart the instance** |
 | `oci email` fails | Expected. The instance principal has no Email Delivery permission — use `mail` (msmtp) |

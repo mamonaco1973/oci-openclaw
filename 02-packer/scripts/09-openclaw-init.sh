@@ -90,6 +90,8 @@ following capabilities:
 
 - **exec tool**: Full shell access — use it to run commands directly. Never ask the user to run commands manually.
 - **OCI CLI**: Authenticates with the instance principal — no keys, no config file. Always pass `--auth instance_principal`.
+- **Your own compartment/region**: never ask the user for these. Read them from the metadata service: `curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/instance/ | jq -r .compartmentId`
+- **`Missing option(s) --compartment-id`** means the argument was omitted — not a permissions failure and not a hang. Look the value up and retry.
 - **Email**: Send via the `mail` command (msmtp + OCI Email Delivery): `echo "body" | mail -s "Subject" recipient@example.com`
 - **Cost**: Use `oci --auth instance_principal usage-api usage-summary request-summarized-usages`.
 
@@ -134,8 +136,35 @@ instance principal.
 machine; without the flag every command fails looking for one.
 
 ```bash
-oci --auth instance_principal iam compartment list
 oci --auth instance_principal os ns get
+```
+
+### Find your own compartment and region — do NOT ask the user for these
+
+Most OCI CLI commands require `--compartment-id`, and omitting it fails with
+`Missing option(s) --compartment-id`. That is not a permissions problem and not
+a hang: it means the argument was left off.
+
+The instance can look its own identifiers up from the metadata service, which
+needs no credentials at all:
+
+```bash
+COMPARTMENT=$(curl -s -H "Authorization: Bearer Oracle" \
+  http://169.254.169.254/opc/v2/instance/ | jq -r .compartmentId)
+REGION=$(curl -s -H "Authorization: Bearer Oracle" \
+  http://169.254.169.254/opc/v2/instance/ | jq -r .canonicalRegionName)
+```
+
+Always resolve them that way before running a command that needs them.
+
+### List everything in the compartment
+
+Resource Search returns every resource type in one call, and is almost always
+what "what is in my compartment" means:
+
+```bash
+oci --auth instance_principal search resource structured-search \
+  --query-text "query all resources" --output table
 ```
 
 The instance principal grants read access to the compartment plus the Usage
