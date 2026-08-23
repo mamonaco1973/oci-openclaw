@@ -37,10 +37,10 @@ set -euo pipefail
 source ./genai-config.sh
 
 export TF_VAR_region="${OCI_REGION}"
-export TF_VAR_primary_model="${GENAI_PRIMARY_MODEL}"
-export TF_VAR_fast_model="${GENAI_FAST_MODEL}"
-export TF_VAR_oss_model="${GENAI_OSS_MODEL}"
-export TF_VAR_grok_model="${GENAI_GROK_MODEL}"
+# Renders GENAI_MODELS to JSON and exports TF_VAR_models +
+# TF_VAR_primary_alias. Terraform parses a complex TF_VAR_ as JSON, so the
+# shell array crosses into HCL as a real list of objects.
+genai_export_tf_vars
 
 # Must match whatever apply.sh used, or 01-core will plan to create the email
 # resources it is being asked to destroy.

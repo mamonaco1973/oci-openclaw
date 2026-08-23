@@ -20,7 +20,7 @@ Port of `aws-openclaw`, completing the set alongside `azure-openclaw`.
   scripts/
     userdata.sh   Boot: set password, write LiteLLM creds + config,
                   configure msmtp, start systemd services
-genai-config.sh   Single source of truth for models + region
+genai-config.sh   Single source of truth: the model array, primary, and region
 probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 ```
 
@@ -58,7 +58,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 
 ---
 
-## THE SEVEN THINGS THAT WILL BITE YOU
+## THE EIGHT THINGS THAT WILL BITE YOU
 
 These are the differences that actually cost time. Everything else ported
 mechanically from `aws-openclaw`.
@@ -185,12 +185,70 @@ The fix is the builder's own `region` field, set from `-var region=`, which
 overrides the config file. Note it is incompatible with
 `use_instance_principals`, should this ever move to that auth mode.
 
+### 8. templatefile parses comments too
+
+`templatefile()` evaluates Terraform interpolations and directives across the
+**entire file, comments included**. Writing an unescaped interpolation in a
+comment — even purely as an example of the syntax — fails the apply:
+
+```
+Call to function "templatefile" failed: ./scripts/userdata.sh:6,69-72:
+Invalid expression; Expected the start of an expression, but found an
+invalid expression token.
+```
+
+The line and column it names point *inside a comment*, which reads like
+nonsense until you know the rule. The same applies to a bare `for` directive
+mentioned in prose.
+
+`userdata.sh` therefore describes its own escaping convention in words and
+never writes a literal example of it. If you are tempted to add one, don't —
+add it to this file instead, which is not a template.
+
 ---
 
 ## Model Selection
 
 All model choices live in `genai-config.sh`. Do not inline model names
 anywhere else.
+
+### Adding or removing models
+
+Edit the `GENAI_MODELS` array. **Any number from 1 upward works and nothing
+else needs touching.**
+
+```bash
+GENAI_MODELS=(
+  "<alias>|<oci-model-name>|<display name>"
+)
+GENAI_PRIMARY="<alias>"
+```
+
+The array is the input to the whole pipeline:
+
+| Consumer | What it does with the array |
+|---|---|
+| `check_env.sh` | Probes every entry; refuses to deploy if one is dead |
+| `apply.sh` | `genai_export_tf_vars` renders it to JSON as `TF_VAR_models` |
+| `userdata.sh` | Generates the LiteLLM `model_list` and registers each with OpenClaw |
+| `validate.sh` | Prints the table and builds the tool-calling curl |
+
+Two design points worth not undoing:
+
+- **The model list is written at BOOT, not at image-build time.** It is a
+  deploy-time decision, so `09-openclaw-init.sh` only stamps the config
+  metadata OpenClaw needs and `userdata.sh` writes the actual models. Baking
+  a list into the image would freeze it there.
+- **The provider blob reaches the shell base64-encoded.** Raw JSON
+  interpolated into bash breaks the moment a display name contains an
+  apostrophe; base64 output is alphanumeric plus `+/=` so no quoting case
+  exists. `compute.tf` does `base64encode(jsonencode(...))`; `userdata.sh`
+  decodes and splices it with `jq --argjson`.
+
+`primary_alias` is validated in two places — `check_env.sh` before anything
+is built, and a cross-variable `validation` block in `variables.tf`. A
+primary that is not in the list yields an OpenClaw that starts fine and
+cannot run an agent, which is a far worse failure than a plan-time error.
 
 **Region matters more than anything else.** Measured with `probe_genai.py`:
 
@@ -231,7 +289,7 @@ Builds `openclaw-image` from Canonical Ubuntu 24.04:
 | `06-user.sh` | `openclaw` Linux user with passwordless sudo |
 | `07-node.sh` | Node.js 22, openclaw at `/usr/local/bin/openclaw` |
 | `08-litellm.sh` | Python venv at `/opt/litellm-venv`, `litellm[proxy]` |
-| `09-openclaw-init.sh` | Stamps config metadata; registers the litellm provider |
+| `09-openclaw-init.sh` | Stamps config metadata and sets gateway mode. Does NOT register models — see below |
 | `10-services.sh` | Installs and enables the systemd units |
 | `11-python-tools.sh` | Document/data Python packages for agent use |
 | `12-onlyoffice.sh` | OnlyOffice Desktop Editors |
@@ -246,9 +304,10 @@ urllib3 without a RECORD file, which blocks pip's resolver system-wide.
 3. Attaches the env file to `litellm.service` with a systemd drop-in — the
    credentials are **not** baked into the image, where anyone able to launch
    from it could read them
-4. Writes `/opt/openclaw/litellm-config.yaml` with the real model names
-5. Configures msmtp if Email Delivery was enabled
-6. Starts `litellm.service` and `openclaw-gateway.service`
+4. Writes `/opt/openclaw/litellm-config.yaml` — one entry per configured model
+5. Registers those same models with OpenClaw and sets the primary
+6. Configures msmtp if Email Delivery was enabled
+7. Starts `litellm.service` and `openclaw-gateway.service`
 
 ## Agent Runtime Notes
 

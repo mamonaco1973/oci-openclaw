@@ -73,6 +73,9 @@ sudo tail /root/userdata.log
 they emit a tool call, and OpenClaw is useless without one. Nothing offline can
 settle it. Run this on the desktop:
 
+`validate.sh` prints this command with your configured primary already filled
+in, so copy it from there rather than editing the alias below by hand:
+
 ```bash
 curl -s http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer sk-openclaw" \
@@ -84,8 +87,15 @@ curl -s http://localhost:4000/v1/chat/completions \
 ```
 
 A `tool_calls` array in the response means the model works for agent use. Only
-a `content` string means it does not — pick another model in `genai-config.sh`
-and re-apply `03-openclaw`.
+a `content` string means it does not — change `GENAI_PRIMARY` in
+`genai-config.sh` and re-apply `03-openclaw`.
+
+To see every model the proxy is actually serving:
+
+```bash
+curl -s http://localhost:4000/v1/models \
+  -H "Authorization: Bearer sk-openclaw" | jq -r '.data[].id'
+```
 
 ---
 
@@ -110,9 +120,9 @@ session and nowhere else.
 | LiteLLM 401 / auth error | Verify the master key: `grep master_key /opt/openclaw/litellm-config.yaml` |
 | LiteLLM `NotAuthenticated` / signing error | Check the injected credentials: `sudo cat /etc/litellm.env` and confirm `/etc/litellm-key.pem` exists, is 0600 and owned by `openclaw` |
 | Gen AI 404 "Entity with key not found" | The model is listed but not served in this region. Availability is per-region — run `python3 probe_genai.py --region us-chicago-1` to see what actually answers |
-| Model replies but never calls tools | Expected for `gpt-oss-120b`. Switch `GENAI_PRIMARY_MODEL` in `genai-config.sh` and re-apply `03-openclaw` |
+| Model replies but never calls tools | Expected for `gpt-oss-120b`. Switch `GENAI_PRIMARY` in `genai-config.sh` and re-apply `03-openclaw` |
 | `oci` CLI fails with `ConfigFileNotFound` | The `--auth instance_principal` flag was omitted. There is no `~/.oci/config` on this box by design |
 | `oci` CLI returns 404 on everything | The instance booted before the dynamic group existed. The principal token caches group membership at boot — **restart the instance** |
 | `oci email` fails | Expected. The instance principal has no Email Delivery permission — use `mail` (msmtp) |
-| Change the model | Edit `/opt/openclaw/litellm-config.yaml`, then `sudo systemctl restart litellm`. For a permanent change, edit `genai-config.sh` and re-apply |
+| Change or add models | Edit the `GENAI_MODELS` array in `genai-config.sh` and re-apply `03-openclaw` — the LiteLLM config and the OpenClaw picker are both regenerated at boot. For a throwaway test, edit `/opt/openclaw/litellm-config.yaml` and `sudo systemctl restart litellm` |
 | Services not started | Check cloud-init: `sudo cat /root/userdata.log` |

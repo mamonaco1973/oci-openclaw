@@ -159,8 +159,26 @@ before trusting the deploy, is in [configure.md](configure.md).
 
 ## Model Selection
 
-Everything lives in [`genai-config.sh`](genai-config.sh). Four models are
-deployed and appear in the OpenClaw picker:
+Everything lives in [`genai-config.sh`](genai-config.sh). Models are declared
+as an array — **any number from 1 upward**, and nothing else in the project
+needs changing:
+
+```bash
+# "<alias>|<oci-model-name>|<display name>"
+GENAI_MODELS=(
+  "llama-maverick|meta.llama-4-maverick-17b-128e-instruct-fp8|Llama 4 Maverick (OCI)"
+  "llama-scout|meta.llama-4-scout-17b-16e-instruct|Llama 4 Scout (OCI)"
+  "gpt-oss-120b|openai.gpt-oss-120b|GPT-OSS 120B (OCI)"
+  "grok-4|xai.grok-4.20-non-reasoning|Grok 4 (OCI)"
+)
+
+GENAI_PRIMARY="llama-maverick"   # agents default to this; must be tool-calling
+```
+
+`check_env.sh` probes every entry before anything is built, `userdata.sh`
+generates both the LiteLLM routing table and the OpenClaw model picker from
+it at first boot, and `validate.sh` reports what was actually deployed. The
+list above is just the default — the four models it ships with:
 
 | Name in OpenClaw | OCI model | Role |
 |---|---|---|

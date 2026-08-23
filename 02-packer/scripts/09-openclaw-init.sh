@@ -13,8 +13,12 @@ set -euo pipefail
 # Flow:
 #   1. Start litellm with a placeholder config so the models endpoint answers.
 #   2. Run the openclaw gateway in the background as the openclaw user.
-#   3. Register the litellm model provider via the CLI.
+#   3. Set gateway mode and approvals.
 #   4. Stop both — config is persisted at /home/openclaw/.openclaw.
+#
+# It does NOT register models. The model list is a deploy-time decision that
+# varies per deployment, so 03-openclaw/scripts/userdata.sh writes it at first
+# boot from var.models. Baking a list in here would freeze it into the image.
 #
 # The placeholder config carries no credentials and is never used for a real
 # call. LiteLLM validates OCI credentials lazily, at invocation, so the proxy
@@ -27,21 +31,9 @@ echo "NOTE: [openclaw-init] writing placeholder litellm config"
 mkdir -p /opt/openclaw
 cat > /opt/openclaw/litellm-config.yaml <<'LITELLM'
 model_list:
-  - model_name: llama-maverick
+  - model_name: placeholder
     litellm_params:
       model: oci/meta.llama-4-maverick-17b-128e-instruct-fp8
-
-  - model_name: llama-scout
-    litellm_params:
-      model: oci/meta.llama-4-scout-17b-16e-instruct
-
-  - model_name: gpt-oss-120b
-    litellm_params:
-      model: oci/openai.gpt-oss-120b
-
-  - model_name: grok-4
-    litellm_params:
-      model: oci/xai.grok-4.20-non-reasoning
 
 litellm_settings:
   drop_params: true
@@ -69,21 +61,10 @@ sudo -u openclaw env HOME=/home/openclaw PATH="${PATH}" bash -c "
 "
 sleep 12
 
-# Primary is Llama 4 Maverick, not the faster gpt-oss-120b, because OpenClaw is
-# an agentic coder and needs tool calling. See genai-config.sh for the full
-# reasoning and the measured Chicago latencies.
-echo "NOTE: [openclaw-init] configuring litellm model provider"
+echo "NOTE: [openclaw-init] setting gateway mode and approvals"
 sudo -u openclaw env HOME=/home/openclaw PATH="${PATH}" bash -c "
   ${OPENCLAW_BIN} config set gateway.mode local || true
   ${OPENCLAW_BIN} config set gateway.auth.mode none || true
-  ${OPENCLAW_BIN} config set models.providers.litellm \
-    '{\"baseUrl\":\"http://localhost:4000\",\"apiKey\":\"sk-openclaw\",\"models\":[{\"id\":\"llama-maverick\",\"name\":\"Llama 4 Maverick (OCI)\"},{\"id\":\"llama-scout\",\"name\":\"Llama 4 Scout (OCI)\"},{\"id\":\"gpt-oss-120b\",\"name\":\"GPT-OSS 120B (OCI)\"},{\"id\":\"grok-4\",\"name\":\"Grok 4 (OCI)\"}]}' \
-    --strict-json || true
-  ${OPENCLAW_BIN} models set litellm/grok-4 || true
-  ${OPENCLAW_BIN} models set litellm/gpt-oss-120b || true
-  ${OPENCLAW_BIN} models set litellm/llama-scout || true
-  ${OPENCLAW_BIN} models set litellm/llama-maverick || true
-  ${OPENCLAW_BIN} config set agents.defaults.model.primary litellm/llama-maverick || true
   ${OPENCLAW_BIN} approvals allowlist add --agent '*' '/**' || true
   ${OPENCLAW_BIN} approvals allowlist add --agent 'main' '/**' || true
 "
@@ -170,8 +151,9 @@ Generative AI:
 curl -s http://localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw"
 ```
 
-Available: `llama-maverick` (primary, tool-calling), `llama-scout`,
-`gpt-oss-120b`, `grok-4`.
+The available models are set at deploy time and vary per deployment, so
+query them rather than assuming. The primary is whichever OpenClaw has
+selected by default.
 
 ## Email
 msmtp is configured system-wide with OCI Email Delivery SMTP credentials.

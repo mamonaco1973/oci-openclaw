@@ -3,7 +3,11 @@
 # validate.sh
 #
 # Post-deploy summary for the OpenClaw AI Agent Workstation.
-# Reads Terraform outputs and prints everything needed to connect.
+# Reads Terraform outputs and prints everything needed to connect, plus the
+# tool-calling check that nothing offline can perform.
+#
+# The model table and the sample curl are both generated from genai-config.sh,
+# so they follow whatever is actually deployed.
 #
 # Requirements:
 #   - terraform CLI installed and authenticated
@@ -23,9 +27,11 @@ source "${SCRIPT_DIR}/genai-config.sh"
 
 cd "${TF_DIR}"
 
-INSTANCE_ID="$(terraform output -raw instance_id 2>/dev/null || echo '<not found>')"
-PUBLIC_IP="$(terraform output -raw public_ip     2>/dev/null || echo '<not found>')"
-PASSWORD="$(terraform output -raw openclaw_password 2>/dev/null || echo '<not found>')"
+INSTANCE_ID="$(terraform output -raw instance_id       2>/dev/null || echo '<not found>')"
+PUBLIC_IP="$(terraform output -raw public_ip           2>/dev/null || echo '<not found>')"
+PASSWORD="$(terraform output -raw openclaw_password    2>/dev/null || echo '<not found>')"
+
+cd "${SCRIPT_DIR}"
 
 # ================================================================================
 # Quick Start Output
@@ -46,32 +52,78 @@ printf "%-28s %s\n" "NOTE: Username:"      "openclaw"
 printf "%-28s %s\n" "NOTE: Password:"      "${PASSWORD}"
 echo ""
 printf "%-28s %s\n" "NOTE: OpenClaw UI:"   "http://localhost:18789 (in Chrome, on the desktop)"
-printf "%-28s %s\n" "NOTE: Primary model:" "${GENAI_PRIMARY_MODEL}"
 echo ""
+
+# ================================================================================
+# Model table — driven by GENAI_MODELS, so it matches what was deployed
+# ================================================================================
+
+echo "NOTE: Models configured (${#GENAI_MODELS[@]}):"
+for entry in "${GENAI_MODELS[@]}"; do
+  IFS='|' read -r alias model display <<< "${entry}"
+  if [ "${alias}" = "${GENAI_PRIMARY}" ]; then
+    printf "NOTE:   %-16s %-46s %s  <- primary\n" "${alias}" "${model}" "${display}"
+  else
+    printf "NOTE:   %-16s %-46s %s\n" "${alias}" "${model}" "${display}"
+  fi
+done
+echo ""
+
 echo "----------------------------------------------------------------------------"
 echo "First boot takes a couple of minutes after the instance reports RUNNING."
-echo "Cloud-init sets the password and starts the services; RDP will refuse the"
-echo "login until it has finished. Watch it with:"
+echo "Cloud-init sets the password, writes the model config and starts the"
+echo "services; RDP will refuse the login until it has finished. Watch it with:"
 echo ""
 echo "  ssh ubuntu@${PUBLIC_IP} sudo tail -f /root/userdata.log"
 echo ""
+
+# ================================================================================
+# Tool-calling check
+# ================================================================================
+#
+# check_env.sh proved every model answers a chat call. It could NOT prove any
+# of them emits a tool call, and OpenClaw is useless without one. There is no
+# offline way to settle it, so this prints the request that does.
+#
+# Built with a quoted heredoc so the JSON survives verbatim; only the model
+# alias is substituted.
+# ================================================================================
+
 echo "----------------------------------------------------------------------------"
 echo "VERIFY TOOL CALLING BEFORE TRUSTING THE DEPLOY"
 echo "----------------------------------------------------------------------------"
 echo "check_env.sh proved the models answer a chat call. It could not prove they"
-echo "emit a TOOL CALL, and OpenClaw is useless without one. Nothing offline can"
-echo "settle that -- run this on the desktop, against the running proxy:"
+echo "emit a TOOL CALL, and OpenClaw is useless without one. Run this on the"
+echo "desktop, against the running proxy:"
 echo ""
-echo '  curl -s http://localhost:4000/v1/chat/completions \'
-echo '    -H "Authorization: Bearer sk-openclaw" \'
-echo '    -H "Content-Type: application/json" \'
-echo "    -d '{\"model\":\"llama-maverick\","
-echo "         \"messages\":[{\"role\":\"user\",\"content\":\"What is the weather in Chicago?\"}],"
-echo "         \"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\","
-echo "           \"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}]}'"
+
+cat <<CURL
+  curl -s http://localhost:4000/v1/chat/completions \\
+    -H "Authorization: Bearer sk-openclaw" \\
+    -H "Content-Type: application/json" \\
+    -d '{
+      "model": "${GENAI_PRIMARY}",
+      "messages": [{"role":"user","content":"What is the weather in Chicago?"}],
+      "tools": [{
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "parameters": {
+            "type": "object",
+            "properties": {"city": {"type":"string"}}
+          }
+        }
+      }]
+    }' | jq .
+CURL
+
 echo ""
 echo "A tool_calls array in the response means the model works for agent use."
-echo "Only a content string means it does not -- pick another model in"
-echo "genai-config.sh and redeploy 03-openclaw."
+echo "Only a content string means it does not -- change GENAI_PRIMARY in"
+echo "genai-config.sh and re-apply 03-openclaw."
+echo ""
+echo "List what the proxy is actually serving:"
+echo ""
+echo "  curl -s http://localhost:4000/v1/models -H \"Authorization: Bearer sk-openclaw\" | jq -r '.data[].id'"
 echo "============================================================================"
 echo ""

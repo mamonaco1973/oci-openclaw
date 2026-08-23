@@ -35,10 +35,10 @@ set -euo pipefail
 source ./genai-config.sh
 
 export TF_VAR_region="${OCI_REGION}"
-export TF_VAR_primary_model="${GENAI_PRIMARY_MODEL}"
-export TF_VAR_fast_model="${GENAI_FAST_MODEL}"
-export TF_VAR_oss_model="${GENAI_OSS_MODEL}"
-export TF_VAR_grok_model="${GENAI_GROK_MODEL}"
+# Renders GENAI_MODELS to JSON and exports TF_VAR_models +
+# TF_VAR_primary_alias. Terraform parses a complex TF_VAR_ as JSON, so the
+# shell array crosses into HCL as a real list of objects.
+genai_export_tf_vars
 
 # Optional: register an OCI Email Delivery approved sender so the agent can
 # send mail. Leave unset and email is skipped entirely.
@@ -86,7 +86,8 @@ echo "NOTE: Tenancy      - ${TENANCY_OCID}"
 echo "NOTE: Compartment  - ${OCI_COMPARTMENT_ID}"
 echo "NOTE: Region       - ${OCI_REGION}"
 echo "NOTE: Home region  - ${HOME_REGION}"
-echo "NOTE: Model        - ${GENAI_PRIMARY_MODEL}"
+echo "NOTE: Models       - $(genai_model_aliases | paste -sd, -)"
+echo "NOTE: Primary      - ${GENAI_PRIMARY}"
 
 
 # ================================================================================

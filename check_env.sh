@@ -91,12 +91,25 @@ source ./genai-config.sh
 REGION="${OCI_REGION:-us-chicago-1}"
 echo "NOTE: Checking region - ${REGION}"
 
-MODELS=(
-  "${GENAI_PRIMARY_MODEL}"
-  "${GENAI_FAST_MODEL}"
-  "${GENAI_OSS_MODEL}"
-  "${GENAI_GROK_MODEL}"
-)
+# Read straight from GENAI_MODELS — any number of entries from 1 upward.
+mapfile -t MODELS < <(genai_model_names)
+
+if [ "${#MODELS[@]}" -eq 0 ]; then
+  echo "ERROR: GENAI_MODELS in genai-config.sh is empty — nothing to deploy."
+  exit 1
+fi
+
+# A primary that is not in the list yields an OpenClaw that starts fine and
+# cannot run an agent. Terraform validates this too, but failing here means
+# failing before anything is built.
+if ! genai_model_for_alias "${GENAI_PRIMARY}" > /dev/null; then
+  echo "ERROR: GENAI_PRIMARY is '${GENAI_PRIMARY}', which is not an alias in"
+  echo "ERROR: GENAI_MODELS. Valid aliases:"
+  genai_model_aliases | sed 's/^/ERROR:   /'
+  exit 1
+fi
+
+echo "NOTE: Checking ${#MODELS[@]} model(s), primary ${GENAI_PRIMARY}"
 
 for model in "${MODELS[@]}"; do
   MODEL_OCID=$(oci generative-ai model-collection list-models \
