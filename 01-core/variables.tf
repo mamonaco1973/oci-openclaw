@@ -1,15 +1,39 @@
-# ================================================================================
-# SECTION: VPC Naming
-# ================================================================================
+# ==============================================================================
+# FILE: variables.tf — core infrastructure inputs
+# ==============================================================================
 
-# Name assigned to the VPC resource created for this environment.
-variable "vpc_name" {
-  description = "Name for the VPC resource"
+variable "compartment_ocid" {
+  description = "OCID of the compartment all regional resources deploy into"
   type        = string
-  default     = "clawd-vpc"
 }
 
-variable "ses_email" {
-  description = "Email address to verify in SES for outbound sending (a verification email will be sent here)"
+variable "tenancy_ocid" {
+  description = "OCID of the root tenancy — IAM users, groups and policies live here"
   type        = string
+}
+
+variable "region" {
+  description = "Region hosting the VCN and compute — must serve the Gen AI models in genai-config.sh"
+  type        = string
+  default     = "us-chicago-1"
+}
+
+variable "home_region" {
+  description = "Tenancy home region — the only region that accepts tenancy-level IAM writes"
+  type        = string
+}
+
+variable "vcn_name" {
+  description = "Display name for the VCN"
+  type        = string
+  default     = "clawd-vcn"
+}
+
+# Leave empty to skip Email Delivery entirely. When set, OCI creates an
+# approved sender for this address and SMTP credentials the instance uses to
+# send mail — the OCI counterpart of the SES identity in aws-openclaw.
+variable "email_sender" {
+  description = "Address to register as an OCI Email Delivery approved sender (empty disables email)"
+  type        = string
+  default     = ""
 }

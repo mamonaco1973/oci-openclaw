@@ -6,7 +6,8 @@ set -euo pipefail
 # ================================================================================
 #
 # Creates the 'openclaw' system user with sudo access.
-# No password is set here — userdata.sh sets it from Secrets Manager at boot.
+# No password is set here — userdata.sh sets it from a Terraform-generated
+# password injected through cloud-init at boot.
 # Desktop config (panel, session, pcmanfm-qt) is inherited from /etc/skel,
 # populated by 02-desktop.sh before this script runs.
 #

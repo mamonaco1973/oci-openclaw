@@ -1,154 +1,241 @@
-# CLAUDE.md — aws-openclaw
+# CLAUDE.md — oci-openclaw
 
 ## Project Overview
 
-Terraform + Packer project that deploys an EC2 instance running **OpenClaw**
-(an AI coding agent) backed by **LiteLLM proxy** pointed at **AWS Bedrock**.
-Users RDP into an LXQt desktop and access the OpenClaw web UI at
-`http://localhost:18789` in Chrome. No SSH keys, no open inbound ports —
-RDP uses SSM Session Manager port-forwarding (or direct inbound RDP if SG
-rules are opened).
+Terraform + Packer project that deploys an OCI compute instance running
+**OpenClaw** (an AI coding agent) backed by a **LiteLLM proxy** pointed at
+**OCI Generative AI**. Users RDP into an LXQt desktop and reach the OpenClaw
+web UI at `http://localhost:18789` in Chrome.
+
+Port of `aws-openclaw`, completing the set alongside `azure-openclaw`.
 
 ## Architecture
 
 ```
-01-core/          VPC + subnets + NAT gateway
-02-packer/        Packer build: Ubuntu 24.04 → openclaw_ami
-  scripts/        01-packages through 10-services
-  files/          litellm.service, openclaw-gateway.service
-03-openclaw/      EC2 instance + IAM role + security group + secrets
+01-core/          VCN + subnets + NAT + service user/API key + Email Delivery
+02-packer/        Packer build: Ubuntu 24.04 → openclaw-image
+  scripts/        01-packages through 12-onlyoffice
+  files/          litellm.service, openclaw-gateway.service, xvfb.service
+03-openclaw/      Compute instance + NSG + dynamic group + policies
   scripts/
-    userdata.sh   Boot: set password from secret, write litellm config,
-                  start systemd services
+    userdata.sh   Boot: set password, write LiteLLM creds + config,
+                  configure msmtp, start systemd services
+genai-config.sh   Single source of truth for models + region
+probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 ```
 
 ### Deployment Order
 
-1. `01-core` — VPC, subnets, NAT gateway
-2. `02-packer` — Packer builds `openclaw_ami`
-3. `03-openclaw` — EC2 from `openclaw_ami`, secrets, IAM
+1. `01-core` — VCN, `openclaw-svc` user + API key, optional Email Delivery
+2. `02-packer` — Packer builds `openclaw-image`
+3. `03-openclaw` — instance from `openclaw-image`, NSG, instance principal
 
 ### Key Resources
 
 | Resource | Value |
 |---|---|
-| Region | `us-east-1` |
-| VPC / CIDR | `clawd-vpc` / `10.0.0.0/23` |
-| EC2 instance tag | `openclaw-host` |
-| Instance type | `t3.xlarge` (variable) |
+| Region | `us-chicago-1` (see genai-config.sh) |
+| VCN / CIDR | `clawd-vcn` / `10.0.0.0/23` |
+| Instance display name | `openclaw-host` |
+| Shape | `VM.Standard.E4.Flex`, 4 OCPU / 16 GB |
 | LiteLLM port | `4000` |
 | LiteLLM master key | `sk-openclaw` |
 | OpenClaw gateway port | `18789` (loopback only) |
-| Bedrock model | Dynamically resolved from `list-foundation-models` |
+| Primary model | `meta.llama-4-maverick-17b-128e-instruct-fp8` |
 | Linux user | `openclaw` (sudo, NOPASSWD) |
-| Password source | AWS Secrets Manager `openclaw_credentials` |
+| Password source | Terraform state → `./get_password.sh` |
 
 ## Common Commands
 
 ```bash
-# Validate environment (checks aws, terraform, jq, packer in PATH + AWS auth)
-./check_env.sh
-
-# Deploy everything (01-core → 02-packer → 03-openclaw → validate)
-./apply.sh
-
-# Tear down (03-openclaw → deregister AMI → 01-core)
-./destroy.sh
-
-# Validate post-deploy
-./validate.sh
+./check_env.sh      # tools, OCI auth, home region, model availability + probe
+./apply.sh          # 01-core → 02-packer → 03-openclaw → validate
+./validate.sh       # connection summary + the tool-calling check
+./get_password.sh   # openclaw desktop password
+./connect.sh        # RDP details (launches mstsc on Windows)
+./destroy.sh        # 03-openclaw → delete images → 01-core
 ```
 
-### Connecting to the Instance
+---
 
-```bash
-# Get instance ID
-INSTANCE_ID=$(cd 03-openclaw && terraform output -raw instance_id)
+## THE FIVE THINGS THAT WILL BITE YOU
 
-# SSM shell session
-aws ssm start-session --target "$INSTANCE_ID" --region us-east-1
+These are the differences that actually cost time. Everything else ported
+mechanically from `aws-openclaw`.
 
-# RDP port-forward (then connect to localhost:13389)
-aws ssm start-session \
-  --target "$INSTANCE_ID" \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters '{"portNumber":["3389"],"localPortNumber":["13389"]}' \
-  --region us-east-1
+### 1. LiteLLM cannot use an instance principal
+
+This is the single biggest departure from the AWS design, and it is LiteLLM's
+limitation rather than OCI's.
+
+LiteLLM's `oci/` provider *can* authenticate with an instance principal — but
+only by being handed a live `oci.signer` object through the Python SDK. The
+**proxy** is configured from YAML and environment variables, and those paths
+resolve manual credentials only. See `litellm/llms/oci/common_utils.py`:
+`resolve_oci_credentials()` reads exactly `OCI_USER`, `OCI_FINGERPRINT`,
+`OCI_TENANCY`, `OCI_KEY`/`OCI_KEY_FILE`, `OCI_COMPARTMENT_ID`, `OCI_REGION`,
+and `sign_oci_request()` falls back to manual signing whenever no signer object
+is present. A YAML config cannot supply one.
+
+So the project runs **two identities**, deliberately:
+
+| Identity | Used by | Grant |
+|---|---|---|
+| `openclaw-svc` user + API key | LiteLLM only | `use generative-ai-family` |
+| `openclaw-dg` dynamic group | the agent's OCI CLI | read compartment, read usage-report |
+
+The instance principal deliberately does **not** include Generative AI. If it
+did, the agent could bypass the proxy, its master key and its model allowlist.
+
+The private key is generated by Terraform, written to `/etc/litellm-key.pem`
+(0600, owned by `openclaw`) at first boot, and never committed.
+
+### 2. Tenancy-level IAM is home-region-only
+
+Groups, users, policies and dynamic groups accept CREATE/UPDATE/DELETE **only
+in the tenancy home region**. Applying them against `us-chicago-1` fails with
+`403-NotAllowed`, and the error text never mentions regions.
+
+Both modules therefore declare a second provider:
+
+```hcl
+provider "oci" {
+  alias  = "home"
+  region = var.home_region
+}
 ```
 
-### Getting the openclaw User Password
+`apply.sh` and `destroy.sh` both resolve the home region via
+`oci iam region-subscription list` and export `TF_VAR_home_region`. Every
+resource in `01-core/identity.tf` and `03-openclaw/iam.tf` sets
+`provider = oci.home`.
 
-```bash
-aws secretsmanager get-secret-value \
-  --secret-id openclaw_credentials \
-  --query SecretString \
-  --output text | jq -r '.password'
-```
+### 3. No OCI Vault — on purpose
+
+OCI holds a deleted vault in `PENDING_DELETION` for a mandatory **30 days**,
+during which it still counts against a default tenancy limit of **one** vault.
+Any apply/destroy loop then fails on `LimitExceeded`, and the documented
+workaround is to manually cancel the deletion and re-import. That is
+incompatible with a project whose whole point is deploy-on-demand.
+
+So secrets live in `terraform.tfstate` and reach the instance via
+`templatefile`, matching what `oci-xubuntu-xrdp` settled on. `get_password.sh`
+reads the password back with `terraform output`. **tfstate contains secrets and
+is gitignored.**
+
+### 4. Dynamic group matching rules, and the boot-time token cache
+
+The matching rule keys off `instance.compartment.id`, **not**
+`resource.type = 'instance'`. The latter reads correctly and silently matches
+nothing — producing an instance principal that authenticates fine and is
+authorised for nothing, 404-ing forever.
+
+Separately: an instance **caches its dynamic-group membership in the principal
+token it fetches at boot**. Changing the dynamic group after an instance is
+running has no effect until the instance is restarted. `compute.tf` therefore
+declares `depends_on = [oci_identity_policy.openclaw_instance]`.
+
+### 5. Snap seeding races the Packer build
+
+`02-packer/scripts/01-packages.sh` must call `snap wait system seed.loaded`
+before removing snap. Snap seeds asynchronously at boot, and removing a package
+mid-seed exits `10` — which under `set -euo pipefail` fails the whole build,
+intermittently, depending on how fast the builder came up.
+
+There is **no agent to install**, unlike AWS. The Oracle Cloud Agent ships in
+the Canonical base image, and this design does not need it: access is direct
+RDP to a public IP, not a managed session broker.
+
+---
+
+## Model Selection
+
+All model choices live in `genai-config.sh`. Do not inline model names
+anywhere else.
+
+**Region matters more than anything else.** Measured with `probe_genai.py`:
+
+- `us-ashburn-1` — 8 models callable. **No Meta, no OpenAI.** Cannot run this
+  project at all.
+- `us-chicago-1` — 10 callable, Meta and OpenAI both answer, slowest 2.6s.
+
+**Primary is Llama 4 Maverick, not the fastest model.** `openai.gpt-oss-120b`
+is faster (0.10s vs 0.12s) and is what `oci-resume-app` runs — but that project
+only needs single-shot completions. OpenClaw is an agentic coder and is useless
+without tool calling; community LiteLLM configs for OCI gpt-oss explicitly set
+`supports_function_calling=false`. Maverick is natively tool-calling, nearly as
+fast, and open-weight, so it carries the same "no vendor retirement schedule"
+argument that made gpt-oss attractive.
+
+### Three levels of "does this model work", and they are not the same
+
+1. **Listed** — `list-models` returns it. Proves nothing. A model can be
+   ACTIVE, advertise CHAT, carry no retirement date and resolve to a valid
+   OCID while 404-ing on every call.
+2. **Answers** — `probe_genai.py` makes a real chat call. `check_env.sh` runs
+   this for every configured model.
+3. **Emits tool calls** — nothing offline can prove this. `validate.sh` prints
+   the curl that settles it against the running proxy. **Run it before
+   concluding a model swap worked.**
 
 ## What Packer (02-packer) Does
 
-Builds `openclaw_ami` from Ubuntu 24.04 (fully self-contained):
+Builds `openclaw-image` from Canonical Ubuntu 24.04:
 
 | Script | What it installs |
 |---|---|
-| `01-packages.sh` | Removes snap, installs SSM agent DEB, base packages |
+| `01-packages.sh` | Waits for snap seed, removes snap, base packages |
 | `02-desktop.sh` | LXQt desktop environment |
 | `03-xrdp.sh` | XRDP + LXQt session config |
 | `04-chrome.sh` | Google Chrome Stable |
-| `05-tools.sh` | Git, AWS CLI v2, Terraform, Packer, Azure CLI, gcloud, VS Code |
+| `05-tools.sh` | Git, **OCI CLI**, AWS CLI v2, Terraform, Packer, Azure CLI, gcloud, VS Code |
 | `06-user.sh` | `openclaw` Linux user with passwordless sudo |
 | `07-node.sh` | Node.js 22, openclaw at `/usr/local/bin/openclaw` |
 | `08-litellm.sh` | Python venv at `/opt/litellm-venv`, `litellm[proxy]` |
-| `09-openclaw-init.sh` | Runs gateway briefly to stamp config metadata; configures litellm provider |
-| `10-services.sh` | Installs and enables `litellm.service` + `openclaw-gateway.service` |
+| `09-openclaw-init.sh` | Stamps config metadata; registers the litellm provider |
+| `10-services.sh` | Installs and enables the systemd units |
+| `11-python-tools.sh` | Document/data Python packages for agent use |
+| `12-onlyoffice.sh` | OnlyOffice Desktop Editors |
+
+The OCI CLI goes into its own venv at `/opt/oci-venv`. Ubuntu 24.04 ships
+urllib3 without a RECORD file, which blocks pip's resolver system-wide.
 
 ## What userdata.sh Does
 
-Runs at first boot on the `openclaw_ami` EC2 instance:
+1. Sets the `openclaw` password (injected from tfstate, no secret-store call)
+2. Writes `/etc/litellm-key.pem` and `/etc/litellm.env` (both 0600)
+3. Attaches the env file to `litellm.service` with a systemd drop-in — the
+   credentials are **not** baked into the image, where anyone able to launch
+   from it could read them
+4. Writes `/opt/openclaw/litellm-config.yaml` with the real model names
+5. Configures msmtp if Email Delivery was enabled
+6. Starts `litellm.service` and `openclaw-gateway.service`
 
-1. Reads `openclaw_credentials` from Secrets Manager via instance IAM role
-2. Sets the `openclaw` Linux user password (`chpasswd`)
-3. Writes `/opt/openclaw/litellm-config.yaml` with the actual Bedrock model ID
-4. Starts `litellm.service` and `openclaw-gateway.service`
+## Agent Runtime Notes
 
-## Bedrock Model Discovery
+The desktop agent has the OCI CLI but **no `~/.oci/config`**. Every command
+needs `--auth instance_principal`; without it the CLI fails with
+`ConfigFileNotFound`, which looks like a permissions problem and is not.
+`09-openclaw-init.sh` writes this into the agent's `SYSTEM.md` and `CLAUDE.md`
+so it does not have to rediscover it.
 
-`apply.sh` queries `aws bedrock list-foundation-models` to find the latest
-active versioned Claude Sonnet model and prepends `us.` for cross-region
-inference profiles:
+Email goes through `mail`/msmtp only. The instance principal has **no** Email
+Delivery API permission, so `oci email` will fail — `SYSTEM.md` says so
+explicitly, because an agent that finds the command will otherwise keep
+retrying it.
 
-```bash
-BASE_MODEL_ID=$(aws bedrock list-foundation-models \
-  --by-provider anthropic \
-  --query 'modelSummaries[?modelLifecycle.status==`ACTIVE` && contains(modelId, `claude-sonnet`)]' \
-  --output json | jq -r '[.[] | select(.modelId | test("-v[0-9]+:[0-9]+$"))] | [.[].modelId] | sort | last')
-BEDROCK_MODEL_ID="us.${BASE_MODEL_ID}"
-```
+## Known Gaps
 
-## IAM Permissions
-
-The instance role (`openclaw-role`) has:
-
-| Policy | Purpose |
-|---|---|
-| `AmazonSSMManagedInstanceCore` | SSM Session Manager access |
-| Inline `openclaw-bedrock` | `bedrock:InvokeModel` + `InvokeModelWithResponseStream` on foundation models and inference profiles |
-| Inline `openclaw-secrets` | `secretsmanager:GetSecretValue` scoped to `openclaw_credentials*` |
-
-## Networking Design
-
-- `vm-subnet-1` / `vm-subnet-2` — private workload subnets, egress via NAT
-- `pub-subnet-1` / `pub-subnet-2` — public subnets (NAT gateway + Packer builder)
-- Security group `openclaw-sg` — port 3389 inbound, all outbound allowed
-- **Packer build uses `pub-subnet-1`** (needs SSH from internet during build)
-- **EC2 host uses `pub-subnet-1`** (direct RDP access)
-
-## Password Format
-
-Generated by Terraform in `03-openclaw/accounts.tf`:
-
-```
-<word>-<6-digit-number>   e.g. "rocket-482910"
-```
-
-Stored in Secrets Manager as `{"username": "openclaw", "password": "..."}`.
+- **Tool calling is unverified.** It could not be checked from the build
+  workstation. Run the curl in `validate.sh` output on first deploy. This is
+  the most likely thing to require a model swap.
+- **No architecture diagram yet.** `aws-openclaw.drawio` / `.png` were removed
+  rather than left describing the wrong cloud; an `oci-openclaw.drawio` still
+  needs drawing.
+- **`00-resources/` still holds the AWS video assets** (`VIDEO.md`,
+  `video-script.md`, `thumbnail.png`). Left in place deliberately — they are
+  the AWS video's, not this project's, and need replacing before any OCI video.
+- `terraform validate` was never run against these modules: the provider
+  plugins crash on the authoring workstation. `terraform fmt` parses both
+  modules cleanly, so syntax is good, but semantics are unproven until the
+  first real apply.

@@ -1,14 +1,33 @@
+# ==============================================================================
+# FILE: outputs.tf
+# ------------------------------------------------------------------------------
+# Read by validate.sh, connect.sh and get_password.sh.
+# ==============================================================================
+
 output "instance_id" {
-  description = "Instance ID for SSM Session Manager connection"
-  value       = aws_instance.openclaw.id
+  description = "OCID of the OpenClaw instance"
+  value       = oci_core_instance.openclaw.id
 }
 
 output "public_ip" {
-  description = "Public IP for direct RDP access (port 3389)"
-  value       = aws_instance.openclaw.public_ip
+  description = "Public IP for RDP on port 3389"
+  value       = oci_core_instance.openclaw.public_ip
 }
 
-output "public_dns" {
-  description = "Public FQDN for direct RDP access (port 3389)"
-  value       = aws_instance.openclaw.public_dns
+output "private_ip" {
+  description = "Private IP within the VCN"
+  value       = oci_core_instance.openclaw.private_ip
+}
+
+output "openclaw_username" {
+  description = "Linux and RDP username"
+  value       = "openclaw"
+}
+
+# There is no Vault to read this back from, by design — see accounts.tf.
+# get_password.sh calls `terraform output -raw openclaw_password`.
+output "openclaw_password" {
+  description = "Password for the openclaw desktop user"
+  value       = local.openclaw_password
+  sensitive   = true
 }

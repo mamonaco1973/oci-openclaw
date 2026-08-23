@@ -4,24 +4,27 @@
 # ================================================================================
 #
 # Purpose:
-#   Orchestrate controlled teardown of core infrastructure.
+#   Controlled teardown of the OpenClaw workstation.
 #
 # Teardown Order:
-#     1. Destroy OpenClaw EC2 host (03-openclaw).
-#     2. Deregister openclaw_ami and its EBS snapshot.
-#     3. Destroy core infrastructure (01-core).
+#   1. Destroy the OpenClaw host (03-openclaw).
+#   2. Delete every openclaw-image custom image.
+#   3. Destroy core infrastructure (01-core).
 #
-# Design Principles:
-#   - Fail-fast behavior for safe teardown.
+# ------------------------------------------------------------------------------
+# WHY THIS SCRIPT RESOLVES THINGS FROM THE API AND NOT FROM TERRAFORM OUTPUTS
+# ------------------------------------------------------------------------------
+# Terraform destroys OUTPUTS BEFORE RESOURCES. A destroy that fails partway
+# therefore strips the very outputs a retry would need to finish the job, and
+# every subsequent run fails in the same place for a different reason than the
+# first one did. That exact trap cost a full debugging session on
+# oci-resume-app.
 #
-# Requirements:
-#   - AWS CLI configured and authenticated.
-#   - Terraform installed and initialized per module.
-#
-# Exit Codes:
-#   0 = Success
-#   1 = Missing directories or Terraform/AWS CLI error
-#
+# So: image discovery here goes through the OCI API, keyed on the display name,
+# and never through `terraform output`. Every CLI call also passes --region
+# explicitly, because this project deploys to a region that is usually NOT the
+# one in ~/.oci/config, and a region-blind call silently looks in the wrong
+# place and reports finding nothing.
 # ================================================================================
 
 set -euo pipefail
@@ -31,52 +34,104 @@ set -euo pipefail
 # SECTION: Configuration
 # ================================================================================
 
-export AWS_DEFAULT_REGION="us-east-1"
+source ./genai-config.sh
 
+export TF_VAR_region="${OCI_REGION}"
+export TF_VAR_primary_model="${GENAI_PRIMARY_MODEL}"
+export TF_VAR_fast_model="${GENAI_FAST_MODEL}"
+export TF_VAR_oss_model="${GENAI_OSS_MODEL}"
+export TF_VAR_grok_model="${GENAI_GROK_MODEL}"
 
-# ================================================================================
-# PHASE 1: Destroy OpenClaw Host
-# ================================================================================
+# Must match whatever apply.sh used, or 01-core will plan to create the email
+# resources it is being asked to destroy.
+export TF_VAR_email_sender="${TF_VAR_email_sender:-}"
 
-echo "NOTE: Destroying OpenClaw host..."
+TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
+export TF_VAR_tenancy_ocid="${TENANCY_OCID}"
 
-cd 03-openclaw || {
-  echo "ERROR: Directory 03-openclaw not found"
+if [ -z "${OCI_COMPARTMENT_ID:-}" ]; then
+  OCI_COMPARTMENT_ID="${TENANCY_OCID}"
+fi
+export TF_VAR_compartment_ocid="${OCI_COMPARTMENT_ID}"
+
+# Tenancy-level IAM deletes are home-region-only, exactly like the creates.
+HOME_REGION=$(oci iam region-subscription list \
+  --tenancy-id "${TENANCY_OCID}" \
+  --query 'data[?"is-home-region"]."region-name" | [0]' \
+  --raw-output 2>/dev/null || echo "")
+
+if [ -z "${HOME_REGION}" ] || [ "${HOME_REGION}" = "null" ]; then
+  echo "ERROR: Could not determine the tenancy home region — IAM teardown would fail."
   exit 1
-}
+fi
+export TF_VAR_home_region="${HOME_REGION}"
+
+echo "NOTE: Region      - ${OCI_REGION}"
+echo "NOTE: Home region - ${HOME_REGION}"
+
+
+# ================================================================================
+# PHASE 1: Destroy the OpenClaw Host
+# ================================================================================
+
+echo "NOTE: Destroying the OpenClaw host..."
+
+cd 03-openclaw || { echo "ERROR: Directory 03-openclaw not found"; exit 1; }
 
 terraform init
 terraform destroy -auto-approve
+
 cd ..
 
 
 # ================================================================================
-# PHASE 2: Deregister OpenClaw AMI
+# PHASE 2: Delete the Custom Images
+# ================================================================================
+#
+# Packer creates these outside Terraform, so Terraform will not remove them.
+# Left behind they accrue storage charges and the next build stacks another
+# image on top.
+#
+# Failures here are reported loudly rather than swallowed: a silent "|| true"
+# on a delete is how a teardown reports success while leaving billable
+# resources running.
+#
 # ================================================================================
 
-echo "NOTE: Deregistering all openclaw_ami AMIs..."
+echo "NOTE: Deleting openclaw-image custom images..."
 
-ami_ids=$(aws ec2 describe-images \
-  --owners self \
-  --filters "Name=name,Values=openclaw_ami*" \
-  --query "Images[*].ImageId" \
-  --output text 2>/dev/null || true)
+IMAGE_IDS=$(oci compute image list \
+  --compartment-id "${OCI_COMPARTMENT_ID}" \
+  --region "${OCI_REGION}" \
+  --lifecycle-state "AVAILABLE" \
+  --all \
+  --raw-output 2>/dev/null \
+  | jq -r '.data[]? | select(."display-name" == "openclaw-image") | .id' || echo "")
 
-if [ -n "${ami_ids}" ] && [ "${ami_ids}" != "None" ]; then
-  for ami_id in ${ami_ids}; do
-    snapshot_id=$(aws ec2 describe-images \
-      --image-ids "${ami_id}" \
-      --query "Images[0].BlockDeviceMappings[0].Ebs.SnapshotId" \
-      --output text)
-    aws ec2 deregister-image --image-id "${ami_id}"
-    echo "NOTE: Deregistered AMI ${ami_id}"
-    if [ -n "${snapshot_id}" ] && [ "${snapshot_id}" != "None" ]; then
-      aws ec2 delete-snapshot --snapshot-id "${snapshot_id}"
-      echo "NOTE: Deleted snapshot ${snapshot_id}"
+if [ -n "${IMAGE_IDS}" ]; then
+  FAILED=0
+  for image_id in ${IMAGE_IDS}; do
+    if oci compute image delete \
+        --image-id "${image_id}" \
+        --region "${OCI_REGION}" \
+        --force \
+        --wait-for-state DELETED \
+        --max-wait-seconds 900 < /dev/null > /dev/null 2>&1; then
+      echo "NOTE: Deleted image ${image_id}"
+    else
+      echo "ERROR: Failed to delete image ${image_id}"
+      FAILED=1
     fi
   done
+  if [ "${FAILED}" -ne 0 ]; then
+    echo "ERROR: One or more images could not be deleted. They still cost money."
+    echo "ERROR: List what is left with:"
+    echo "ERROR:   oci compute image list --compartment-id ${OCI_COMPARTMENT_ID} \\"
+    echo "ERROR:     --region ${OCI_REGION} --all"
+    exit 1
+  fi
 else
-  echo "NOTE: No openclaw_ami found, skipping"
+  echo "NOTE: No openclaw-image found, skipping."
 fi
 
 
@@ -86,24 +141,10 @@ fi
 
 echo "NOTE: Destroying core infrastructure..."
 
-cd 01-core || {
-  echo "ERROR: Directory 01-core not found"
-  exit 1
-}
+cd 01-core || { echo "ERROR: Directory 01-core not found"; exit 1; }
 
 terraform init
-
-SES_EMAIL=$(aws secretsmanager get-secret-value \
-  --secret-id openclaw_ses_smtp \
-  --query SecretString \
-  --output text 2>/dev/null | jq -r '.from_email // empty' 2>/dev/null || true)
-
-if [ -n "${SES_EMAIL}" ]; then
-  echo "NOTE: Using existing SES email: ${SES_EMAIL}"
-  terraform destroy -auto-approve -var="ses_email=${SES_EMAIL}"
-else
-  terraform destroy -auto-approve
-fi
+terraform destroy -auto-approve
 
 cd ..
 
@@ -112,4 +153,11 @@ cd ..
 # SECTION: Completion
 # ================================================================================
 
-echo "NOTE: Infrastructure teardown complete."
+echo ""
+echo "================================================================================"
+echo "  Teardown complete — nothing left running."
+echo "================================================================================"
+echo "  The openclaw-svc user, its API key and both policies are gone with 01-core."
+echo "  No OCI Vault was used, so there is no 30-day pending-deletion hold to wait"
+echo "  out before the next apply."
+echo "================================================================================"

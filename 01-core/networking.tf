@@ -1,171 +1,183 @@
-# ================================================================================
-# FILE: network.tf
-# ================================================================================
+# ==============================================================================
+# FILE: networking.tf — VCN baseline for the OpenClaw workstation
+# ------------------------------------------------------------------------------
+# Mirrors the aws-openclaw layout: two public subnets and two private subnets
+# in a /23, IGW for public egress, NAT for private egress.
 #
-# Purpose:
-#   Define baseline networking for the OpenClaw environment, including:
-#     - VPC with DNS support and hostnames enabled
-#     - Public subnets for NAT gateway placement
-#     - Private subnets for EC2 workload hosts (egress via NAT)
-#     - Internet Gateway for public subnet egress
-#     - NAT Gateway for private subnet outbound access
-#     - Route tables (public/private) and subnet associations
+# The OpenClaw host and the Packer build instance both land in pub-subnet-1.
+# That is deliberate and matches AWS: the host needs inbound 3389 for RDP and
+# the builder needs inbound SSH. The private subnets exist so the design can be
+# tightened to a bastion-only topology without re-cutting the address plan.
 #
-# Notes:
-#   - All subnets have map_public_ip_on_launch = true, but vm-subnets route
-#     through the NAT gateway — instances receive public IPs that are not
-#     reachable inbound due to no IGW route on the private route table.
-#   - VPC CIDR: 10.0.0.0/23, region: us-east-1
-#
-# ================================================================================
+# OCI difference worth knowing: security lists attach to the SUBNET, not to the
+# instance. Per-instance rules are NSGs, which 03-openclaw uses for RDP. Both
+# are evaluated, and traffic must be permitted by both.
+# ==============================================================================
 
+# ==============================================================================
+# VCN
+# ==============================================================================
 
-# ================================================================================
-# SECTION: VPC
-# ================================================================================
+resource "oci_core_vcn" "clawd_vcn" {
+  compartment_id = var.compartment_ocid
+  cidr_block     = "10.0.0.0/23"
+  display_name   = var.vcn_name
 
-# VPC with DNS support and hostnames enabled for EC2 instance name resolution.
-resource "aws_vpc" "clawd-vpc" {
-  cidr_block           = "10.0.0.0/23"
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-
-  tags = { Name = var.vpc_name }
+  # dns_label must be alphanumeric and <= 15 characters.
+  dns_label = "clawdvcn"
 }
 
+# ==============================================================================
+# Gateways
+# ==============================================================================
 
-# ================================================================================
-# SECTION: Internet Gateway
-# ================================================================================
-
-# Internet Gateway provides egress for public subnets and NAT gateway traffic.
-resource "aws_internet_gateway" "clawd-igw" {
-  vpc_id = aws_vpc.clawd-vpc.id
-  tags   = { Name = "clawd-igw" }
+resource "oci_core_internet_gateway" "clawd_igw" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.clawd_vcn.id
+  display_name   = "clawd-igw"
+  enabled        = true
 }
 
-
-# ================================================================================
-# SECTION: Subnets
-# ================================================================================
-
-# Subnet layout:
-#   - vm-subnet-1: 10.0.0.64/26, workload hosts (private routing), AZ use1-az6
-#   - vm-subnet-2: 10.0.0.128/26, workload hosts (private routing), AZ use1-az4
-#   - pub-subnet-1: 10.0.0.192/26, NAT gateway placement (public), AZ use1-az4
-#   - pub-subnet-2: 10.0.1.0/26, NAT gateway placement (public), AZ use1-az6
-
-resource "aws_subnet" "vm-subnet-1" {
-  vpc_id                  = aws_vpc.clawd-vpc.id
-  cidr_block              = "10.0.0.64/26"
-  map_public_ip_on_launch = true
-  availability_zone_id    = "use1-az6"
-
-  tags = { Name = "vm-subnet-1" }
+resource "oci_core_nat_gateway" "clawd_nat" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.clawd_vcn.id
+  display_name   = "clawd-nat"
 }
 
-resource "aws_subnet" "vm-subnet-2" {
-  vpc_id                  = aws_vpc.clawd-vpc.id
-  cidr_block              = "10.0.0.128/26"
-  map_public_ip_on_launch = true
-  availability_zone_id    = "use1-az4"
+# ==============================================================================
+# Route Tables
+# ==============================================================================
 
-  tags = { Name = "vm-subnet-2" }
+resource "oci_core_route_table" "public_rt" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.clawd_vcn.id
+  display_name   = "public-route-table"
+
+  route_rules {
+    destination       = "0.0.0.0/0"
+    destination_type  = "CIDR_BLOCK"
+    network_entity_id = oci_core_internet_gateway.clawd_igw.id
+  }
 }
 
-resource "aws_subnet" "pub-subnet-1" {
-  vpc_id                  = aws_vpc.clawd-vpc.id
-  cidr_block              = "10.0.0.192/26"
-  map_public_ip_on_launch = true
-  availability_zone_id    = "use1-az4"
+resource "oci_core_route_table" "private_rt" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.clawd_vcn.id
+  display_name   = "private-route-table"
 
-  tags = { Name = "pub-subnet-1" }
+  route_rules {
+    destination       = "0.0.0.0/0"
+    destination_type  = "CIDR_BLOCK"
+    network_entity_id = oci_core_nat_gateway.clawd_nat.id
+  }
 }
 
-resource "aws_subnet" "pub-subnet-2" {
-  vpc_id                  = aws_vpc.clawd-vpc.id
-  cidr_block              = "10.0.1.0/26"
-  map_public_ip_on_launch = true
-  availability_zone_id    = "use1-az6"
+# ==============================================================================
+# Security Lists
+# ------------------------------------------------------------------------------
+# Lab defaults: SSH for the Packer builder, RDP for the desktop. Egress is wide
+# open because LiteLLM calls the Gen AI endpoint and the desktop pulls packages.
+# ==============================================================================
 
-  tags = { Name = "pub-subnet-2" }
+resource "oci_core_security_list" "pub_sl" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.clawd_vcn.id
+  display_name   = "pub-security-list"
+
+  # SSH — Packer connects to the temporary build instance over the internet.
+  ingress_security_rules {
+    protocol  = "6"
+    source    = "0.0.0.0/0"
+    stateless = false
+    tcp_options {
+      min = 22
+      max = 22
+    }
+  }
+
+  # RDP — the OpenClaw desktop.
+  ingress_security_rules {
+    protocol  = "6"
+    source    = "0.0.0.0/0"
+    stateless = false
+    tcp_options {
+      min = 3389
+      max = 3389
+    }
+  }
+
+  egress_security_rules {
+    protocol    = "all"
+    destination = "0.0.0.0/0"
+    stateless   = false
+  }
 }
 
+resource "oci_core_security_list" "vm_sl" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.clawd_vcn.id
+  display_name   = "vm-security-list"
 
-# ================================================================================
-# SECTION: NAT Elastic IP
-# ================================================================================
+  ingress_security_rules {
+    protocol  = "all"
+    source    = "10.0.0.0/23"
+    stateless = false
+  }
 
-# Elastic IP provides a stable public egress address for the NAT gateway.
-resource "aws_eip" "nat_eip" {
-  tags = { Name = "nat-eip" }
+  egress_security_rules {
+    protocol    = "all"
+    destination = "0.0.0.0/0"
+    stateless   = false
+  }
 }
 
+# ==============================================================================
+# Subnets
+# ------------------------------------------------------------------------------
+#   pub-subnet-1  10.0.0.0/26    OpenClaw host + Packer builder (IGW)
+#   pub-subnet-2  10.0.0.64/26   spare public capacity (IGW)
+#   vm-subnet-1   10.0.0.128/26  private workload (NAT)
+#   vm-subnet-2   10.0.0.192/26  private workload (NAT)
+# ==============================================================================
 
-# ================================================================================
-# SECTION: NAT Gateway
-# ================================================================================
-
-# NAT gateway is placed in a public subnet to provide outbound internet access
-# for private subnets without inbound internet exposure.
-resource "aws_nat_gateway" "clawd_nat" {
-  subnet_id     = aws_subnet.pub-subnet-1.id
-  allocation_id = aws_eip.nat_eip.id
-  tags          = { Name = "clawd-nat" }
+resource "oci_core_subnet" "pub_subnet_1" {
+  compartment_id    = var.compartment_ocid
+  vcn_id            = oci_core_vcn.clawd_vcn.id
+  cidr_block        = "10.0.0.0/26"
+  display_name      = "pub-subnet-1"
+  dns_label         = "pubsubnet1"
+  route_table_id    = oci_core_route_table.public_rt.id
+  security_list_ids = [oci_core_security_list.pub_sl.id]
 }
 
-
-# ================================================================================
-# SECTION: Route Tables and Routes
-# ================================================================================
-
-# Public route table: default route to Internet Gateway.
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.clawd-vpc.id
-  tags   = { Name = "public-route-table" }
+resource "oci_core_subnet" "pub_subnet_2" {
+  compartment_id    = var.compartment_ocid
+  vcn_id            = oci_core_vcn.clawd_vcn.id
+  cidr_block        = "10.0.0.64/26"
+  display_name      = "pub-subnet-2"
+  dns_label         = "pubsubnet2"
+  route_table_id    = oci_core_route_table.public_rt.id
+  security_list_ids = [oci_core_security_list.pub_sl.id]
 }
 
-resource "aws_route" "public_default" {
-  route_table_id         = aws_route_table.public.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.clawd-igw.id
+resource "oci_core_subnet" "vm_subnet_1" {
+  compartment_id             = var.compartment_ocid
+  vcn_id                     = oci_core_vcn.clawd_vcn.id
+  cidr_block                 = "10.0.0.128/26"
+  display_name               = "vm-subnet-1"
+  dns_label                  = "vmsubnet1"
+  prohibit_public_ip_on_vnic = true
+  route_table_id             = oci_core_route_table.private_rt.id
+  security_list_ids          = [oci_core_security_list.vm_sl.id]
 }
 
-# Private route table: default route to NAT gateway.
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.clawd-vpc.id
-  tags   = { Name = "private-route-table" }
-}
-
-resource "aws_route" "private_default" {
-  route_table_id         = aws_route_table.private.id
-  destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.clawd_nat.id
-}
-
-
-# ================================================================================
-# SECTION: Route Table Associations
-# ================================================================================
-
-# Associate private route table with vm-subnets; outbound traffic routes via NAT.
-resource "aws_route_table_association" "rt_assoc_vm_public" {
-  subnet_id      = aws_subnet.vm-subnet-1.id
-  route_table_id = aws_route_table.private.id
-}
-
-resource "aws_route_table_association" "rt_assoc_vm_public_2" {
-  subnet_id      = aws_subnet.vm-subnet-2.id
-  route_table_id = aws_route_table.private.id
-}
-
-# Associate public route table with public subnets (egress via IGW).
-resource "aws_route_table_association" "rt_assoc_pub_public" {
-  subnet_id      = aws_subnet.pub-subnet-1.id
-  route_table_id = aws_route_table.public.id
-}
-
-resource "aws_route_table_association" "rt_assoc_pub_public_2" {
-  subnet_id      = aws_subnet.pub-subnet-2.id
-  route_table_id = aws_route_table.public.id
+resource "oci_core_subnet" "vm_subnet_2" {
+  compartment_id             = var.compartment_ocid
+  vcn_id                     = oci_core_vcn.clawd_vcn.id
+  cidr_block                 = "10.0.0.192/26"
+  display_name               = "vm-subnet-2"
+  dns_label                  = "vmsubnet2"
+  prohibit_public_ip_on_vnic = true
+  route_table_id             = oci_core_route_table.private_rt.id
+  security_list_ids          = [oci_core_security_list.vm_sl.id]
 }

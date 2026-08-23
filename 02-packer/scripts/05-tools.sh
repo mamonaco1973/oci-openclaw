@@ -8,6 +8,7 @@ set -euo pipefail
 # Installs cloud CLI tools and developer tooling needed for multi-cloud
 # project work from the OpenClaw desktop:
 #   - Git
+#   - OCI CLI
 #   - AWS CLI v2
 #   - HashiCorp (Terraform + Packer)
 #   - Azure CLI
@@ -26,6 +27,26 @@ echo "NOTE: [tools] installing git"
 apt-get install -y git
 echo "NOTE: [tools] git $(git --version)"
 
+
+# ================================================================================
+# OCI CLI
+# ================================================================================
+#
+# Installed into its own venv at /opt/oci-venv rather than system-wide.
+# Ubuntu 24.04 ships urllib3 without a RECORD file, which makes pip's resolver
+# refuse to touch it; a venv sidesteps the Debian-managed packages entirely.
+#
+# The agent uses this at runtime via the instance principal — no key and no
+# config file. Authenticate any command with --auth instance_principal.
+#
+# ================================================================================
+
+echo "NOTE: [tools] installing OCI CLI"
+python3 -m venv /opt/oci-venv
+/opt/oci-venv/bin/pip install --quiet --upgrade pip
+/opt/oci-venv/bin/pip install --quiet oci-cli
+ln -sf /opt/oci-venv/bin/oci /usr/local/bin/oci
+echo "NOTE: [tools] $(oci --version)"
 
 # ================================================================================
 # AWS CLI v2

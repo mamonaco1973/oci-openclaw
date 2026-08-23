@@ -11,10 +11,15 @@ set -euo pipefail
 # pre-written config with defaults, discarding the litellm provider settings.
 #
 # Flow:
-#   1. Start litellm with a placeholder config so models auth can connect.
-#   2. Run openclaw gateway in background as openclaw user (stamps config).
-#   3. Configure the litellm model provider via CLI.
-#   4. Stop both processes — config is persisted at /home/openclaw/.openclaw.
+#   1. Start litellm with a placeholder config so the models endpoint answers.
+#   2. Run the openclaw gateway in the background as the openclaw user.
+#   3. Register the litellm model provider via the CLI.
+#   4. Stop both — config is persisted at /home/openclaw/.openclaw.
+#
+# The placeholder config carries no credentials and is never used for a real
+# call. LiteLLM validates OCI credentials lazily, at invocation, so the proxy
+# starts happily here on a build host that has none. userdata.sh replaces this
+# file wholesale at first boot with the models from genai-config.sh.
 #
 # ================================================================================
 
@@ -22,25 +27,24 @@ echo "NOTE: [openclaw-init] writing placeholder litellm config"
 mkdir -p /opt/openclaw
 cat > /opt/openclaw/litellm-config.yaml <<'LITELLM'
 model_list:
-  - model_name: claude-sonnet
+  - model_name: llama-maverick
     litellm_params:
-      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
-      aws_region_name: us-east-1
+      model: oci/meta.llama-4-maverick-17b-128e-instruct-fp8
 
-  - model_name: claude-haiku
+  - model_name: llama-scout
     litellm_params:
-      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
-      aws_region_name: us-east-1
+      model: oci/meta.llama-4-scout-17b-16e-instruct
 
-  - model_name: nova-pro
+  - model_name: gpt-oss-120b
     litellm_params:
-      model: bedrock/us.amazon.nova-pro-v1:0
-      aws_region_name: us-east-1
+      model: oci/openai.gpt-oss-120b
 
-  - model_name: nova-lite
+  - model_name: grok-4
     litellm_params:
-      model: bedrock/us.amazon.nova-lite-v1:0
-      aws_region_name: us-east-1
+      model: oci/xai.grok-4.20-non-reasoning
+
+litellm_settings:
+  drop_params: true
 
 general_settings:
   master_key: "sk-openclaw"
@@ -65,29 +69,31 @@ sudo -u openclaw env HOME=/home/openclaw PATH="${PATH}" bash -c "
 "
 sleep 12
 
+# Primary is Llama 4 Maverick, not the faster gpt-oss-120b, because OpenClaw is
+# an agentic coder and needs tool calling. See genai-config.sh for the full
+# reasoning and the measured Chicago latencies.
 echo "NOTE: [openclaw-init] configuring litellm model provider"
 sudo -u openclaw env HOME=/home/openclaw PATH="${PATH}" bash -c "
   ${OPENCLAW_BIN} config set gateway.mode local || true
   ${OPENCLAW_BIN} config set gateway.auth.mode none || true
   ${OPENCLAW_BIN} config set models.providers.litellm \
-    '{\"baseUrl\":\"http://localhost:4000\",\"apiKey\":\"sk-openclaw\",\"models\":[{\"id\":\"claude-sonnet\",\"name\":\"Claude Sonnet (Bedrock)\"},{\"id\":\"claude-haiku\",\"name\":\"Claude Haiku (Bedrock)\"},{\"id\":\"nova-pro\",\"name\":\"Amazon Nova Pro (Bedrock)\"},{\"id\":\"nova-lite\",\"name\":\"Amazon Nova Lite (Bedrock)\"}]}' \
+    '{\"baseUrl\":\"http://localhost:4000\",\"apiKey\":\"sk-openclaw\",\"models\":[{\"id\":\"llama-maverick\",\"name\":\"Llama 4 Maverick (OCI)\"},{\"id\":\"llama-scout\",\"name\":\"Llama 4 Scout (OCI)\"},{\"id\":\"gpt-oss-120b\",\"name\":\"GPT-OSS 120B (OCI)\"},{\"id\":\"grok-4\",\"name\":\"Grok 4 (OCI)\"}]}' \
     --strict-json || true
-  ${OPENCLAW_BIN} models set litellm/nova-lite || true
-  ${OPENCLAW_BIN} models set litellm/nova-pro || true
-  ${OPENCLAW_BIN} models set litellm/claude-haiku || true
-  ${OPENCLAW_BIN} models set litellm/claude-sonnet || true
-  ${OPENCLAW_BIN} config set agents.defaults.model.primary litellm/claude-sonnet || true
+  ${OPENCLAW_BIN} models set litellm/grok-4 || true
+  ${OPENCLAW_BIN} models set litellm/gpt-oss-120b || true
+  ${OPENCLAW_BIN} models set litellm/llama-scout || true
+  ${OPENCLAW_BIN} models set litellm/llama-maverick || true
+  ${OPENCLAW_BIN} config set agents.defaults.model.primary litellm/llama-maverick || true
   ${OPENCLAW_BIN} approvals allowlist add --agent '*' '/**' || true
   ${OPENCLAW_BIN} approvals allowlist add --agent 'main' '/**' || true
 "
 
 echo "NOTE: [openclaw-init] stopping all openclaw and litellm processes"
-# Kill all processes running as the openclaw user — this catches the gateway,
-# any restarted child processes, node workers, and uvicorn/litellm children
-# that pkill -f misses.
+# Kill everything running as the openclaw user — this catches the gateway, any
+# restarted children, node workers, and the uvicorn/litellm children that
+# pkill -f misses.
 pkill -u openclaw 2>/dev/null || true
 sleep 3
-# Force-kill anything still alive
 pkill -9 -u openclaw 2>/dev/null || true
 rm -f /tmp/openclaw-init.pid
 
@@ -98,46 +104,82 @@ mkdir -p "${WORKSPACE}"
 cat > "${WORKSPACE}/HEARTBEAT.md" <<'HEARTBEAT'
 # System Context
 
-You are running on an AWS EC2 instance with the following capabilities:
+You are running on an Oracle Cloud Infrastructure compute instance with the
+following capabilities:
 
 - **exec tool**: Full shell access — use it to run commands directly. Never ask the user to run commands manually.
-- **AWS CLI**: Pre-authenticated via instance IAM role. No credentials needed. Run aws commands directly via exec.
-- **Email**: Send email via `mail` command (msmtp + AWS SES SMTP): `echo "body" | mail -s "Subject" recipient@example.com`
-- **Cost Explorer**: Use `aws ce get-cost-and-usage` — the IAM role has Cost Explorer access.
+- **OCI CLI**: Authenticates with the instance principal — no keys, no config file. Always pass `--auth instance_principal`.
+- **Email**: Send via the `mail` command (msmtp + OCI Email Delivery): `echo "body" | mail -s "Subject" recipient@example.com`
+- **Cost**: Use `oci --auth instance_principal usage-api usage-summary request-summarized-usages`.
 
 Read SYSTEM.md in this workspace for the full list of installed tools and capabilities.
 HEARTBEAT
 
-cat > "${WORKSPACE}/CLAUDE.md" <<'CLAUDE'
-You have full exec access via the exec tool. The AWS CLI is installed and
-pre-authenticated via the instance IAM role — no credentials needed. Use
-exec to run AWS CLI commands directly to complete any AWS task.
+cat > "${WORKSPACE}/CLAUDE.md" <<'CLAUDEMD'
+You have full exec access via the exec tool. The OCI CLI is installed and the
+instance carries an instance principal, so no credentials are configured on
+disk and ~/.oci/config does not exist.
 
-To send email use the AWS CLI via exec:
-  aws ses send-email \
-    --from "you@example.com" \
-    --destination "ToAddresses=you@example.com" \
-    --message "Subject={Data=Subject},Body={Text={Data=Body}}" \
-    --region us-east-1
+Every OCI CLI command must therefore pass the auth mode explicitly:
 
-The from address is in /etc/msmtprc — read it with: grep '^from' /etc/msmtprc | awk '{print $2}'
+  oci --auth instance_principal iam region list
+
+Without that flag the CLI looks for ~/.oci/config and fails with a
+ConfigFileNotFound error. That failure is not a permissions problem — it means
+the flag was omitted.
+
+To send email, use the mail command via exec — msmtp is configured with OCI
+Email Delivery SMTP credentials:
+
+  echo "Message body" | mail -s "Subject" recipient@example.com
+
+The from address is in /etc/msmtprc. Read it with:
+  grep '^from' /etc/msmtprc
 
 Never tell the user to do something manually that you can do yourself via exec.
-CLAUDE
+CLAUDEMD
 
 echo "NOTE: [openclaw-init] writing SYSTEM.md to workspace"
-cat > "${WORKSPACE}/SYSTEM.md" <<'SYSTEM'
+cat > "${WORKSPACE}/SYSTEM.md" <<'SYSTEMMD'
 # System Capabilities
 
 This instance has the following tools and capabilities available via exec.
 
-## Email
-msmtp is configured system-wide with AWS SES SMTP credentials.
-Use the `mail` command to send email — no additional setup needed.
+## Cloud — Oracle Cloud Infrastructure
+The OCI CLI is installed at /usr/local/bin/oci and authenticates with the
+instance principal.
 
-**Important:** The IAM role does NOT have SES API permissions. Do not use
-`aws ses send-email` or boto3 SES calls — they will fail. Always use the
-`mail` command via msmtp, which uses pre-configured SMTP credentials.
+**Always pass `--auth instance_principal`.** There is no ~/.oci/config on this
+machine; without the flag every command fails looking for one.
+
+```bash
+oci --auth instance_principal iam compartment list
+oci --auth instance_principal os ns get
+```
+
+The instance principal grants read access to the compartment plus the Usage
+API. It does NOT grant Generative AI access — that runs through a separate
+service user that only LiteLLM holds credentials for. Reach models through the
+local proxy, never through the SDK directly.
+
+## Models
+The local LiteLLM proxy on port 4000 speaks the OpenAI API and forwards to OCI
+Generative AI:
+
+```bash
+curl -s http://localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw"
+```
+
+Available: `llama-maverick` (primary, tool-calling), `llama-scout`,
+`gpt-oss-120b`, `grok-4`.
+
+## Email
+msmtp is configured system-wide with OCI Email Delivery SMTP credentials.
+Use the `mail` command — no additional setup needed.
+
+**Important:** The instance principal does NOT carry Email Delivery API
+permissions. Do not try to send through the OCI SDK or CLI; always use the
+`mail` command, which uses the pre-configured SMTP credentials.
 
 ```bash
 # Plain text
@@ -172,14 +214,13 @@ echo "See attached." | mail -s "Subject" -A /path/to/file.docx recipient@example
 - **poppler-utils** — PDF utilities (pdftotext, pdfinfo)
 - **ghostscript** — PDF manipulation
 
-## Cloud
-- **AWS CLI** — configured via instance IAM role (no credentials needed)
-  - Bedrock, S3, Cost Explorer, Secrets Manager, SES
+## Other Clouds
+- **AWS CLI**, **gcloud**, **az** — installed but NOT authenticated. They need
+  credentials configured before they will do anything.
 - **Terraform**, **Packer** — infrastructure tools
-- **gcloud**, **az** — Google Cloud and Azure CLIs
 
 ## File System
-- Workspace: `~/.openclaw/workspace` (also accessible as `~/Openclaw/workspace`)
+- Workspace: `~/.openclaw/workspace` (also reachable as `~/Openclaw/workspace`)
 - Home: `/home/openclaw`
 
 ## Utilities
@@ -188,23 +229,24 @@ echo "See attached." | mail -s "Subject" -A /path/to/file.docx recipient@example
 - **xmlstarlet** — XML processing
 - **Rich** (Python) — formatted terminal output
 
-SYSTEM
+SYSTEMMD
 
 chown -R openclaw:openclaw "${WORKSPACE}"
 
 echo "NOTE: [openclaw-init] appending SYSTEM.md reference to BOOTSTRAP.md"
 BOOTSTRAP="${WORKSPACE}/BOOTSTRAP.md"
 if [ -f "${BOOTSTRAP}" ]; then
-  cat >> "${BOOTSTRAP}" <<'EOF'
+  cat >> "${BOOTSTRAP}" <<'BOOTNOTE'
 
 ---
 
 ## This System
 
-Before you delete this file, read `SYSTEM.md` in this workspace — it lists
-the tools, commands, and capabilities available on this machine (email, document
-processing, AWS CLI, etc.). Keep that file around after onboarding.
-EOF
+Before you delete this file, read `SYSTEM.md` in this workspace — it lists the
+tools, commands, and capabilities available on this machine (email, document
+processing, the OCI CLI and its required --auth flag, etc.). Keep that file
+around after onboarding.
+BOOTNOTE
 fi
 
 echo "NOTE: [openclaw-init] config directory contents:"

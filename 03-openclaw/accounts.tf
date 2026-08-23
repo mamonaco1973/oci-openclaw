@@ -1,23 +1,28 @@
-# ================================================================================
+# ==============================================================================
 # FILE: accounts.tf
-# ================================================================================
+# ------------------------------------------------------------------------------
+# Generates the password for the local openclaw Linux user. The instance sets
+# it at first boot from a value injected through cloud-init.
 #
-# Purpose:
-#   Generate a memorable password for the local openclaw Linux user and store
-#   it in AWS Secrets Manager. The EC2 instance reads this secret at first boot
-#   to create and configure the account.
+# Format: <word>-<6-digit-number>, e.g. "rocket-482910" — memorable enough to
+# type into an RDP prompt, which is the only place it is ever used.
 #
-# Design:
-#   - Password format: <word>-<6-digit-number>
-#   - No credentials exposed via Terraform outputs.
-#   - Secret permitted to be destroyed during teardown.
+# WHY THIS IS NOT IN OCI VAULT, unlike the AWS build's Secrets Manager entry:
+# OCI holds a deleted vault in PENDING_DELETION for a mandatory 30 days, during
+# which it still counts against a default tenancy limit of one vault. Any
+# destroy/rebuild cycle then fails on LimitExceeded until the hold expires, and
+# the documented workaround is to manually cancel the deletion and re-import.
+# That is incompatible with a project whose whole point is apply/destroy on
+# demand, so this repo follows the convention the other OCI projects here
+# settled on: the password lives in tfstate and get_password.sh reads it back.
 #
-# ================================================================================
+# tfstate therefore contains secrets. It is gitignored, and so is everything
+# else Terraform writes.
+# ==============================================================================
 
-
-# ================================================================================
+# ==============================================================================
 # SECTION: Memorable Word List
-# ================================================================================
+# ==============================================================================
 
 locals {
   memorable_words = [
@@ -29,10 +34,9 @@ locals {
   ]
 }
 
-
-# ================================================================================
+# ==============================================================================
 # SECTION: Password Generation
-# ================================================================================
+# ==============================================================================
 
 resource "random_shuffle" "word" {
   input        = local.memorable_words
@@ -49,28 +53,4 @@ locals {
     random_shuffle.word.result[0],
     random_integer.num.result
   )
-}
-
-
-# ================================================================================
-# SECTION: Secrets Manager
-# ================================================================================
-
-resource "aws_secretsmanager_secret" "openclaw" {
-  name                    = "openclaw_credentials"
-  description             = "Local openclaw desktop user credentials"
-  recovery_window_in_days = 0
-
-  lifecycle {
-    prevent_destroy = false
-  }
-}
-
-resource "aws_secretsmanager_secret_version" "openclaw" {
-  secret_id = aws_secretsmanager_secret.openclaw.id
-
-  secret_string = jsonencode({
-    username = "openclaw"
-    password = local.openclaw_password
-  })
 }
