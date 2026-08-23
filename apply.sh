@@ -151,6 +151,8 @@ echo "NOTE: Building the OpenClaw image with Packer..."
 
 packer init ./openclaw.pkr.hcl
 packer build \
+  -var "models_b64=$(genai_models_b64)" \
+  -var "primary_alias=${GENAI_PRIMARY}" \
   -var "region=${OCI_REGION}" \
   -var "compartment_ocid=${OCI_COMPARTMENT_ID}" \
   -var "availability_domain=${AD}" \

@@ -157,3 +157,12 @@ genai_export_tf_vars() {
   TF_VAR_primary_alias="${GENAI_PRIMARY}"
   export TF_VAR_models TF_VAR_primary_alias
 }
+
+# Emit GENAI_MODELS as base64-encoded JSON, for handing to Packer.
+#
+# Base64 because this crosses a `packer build -var` boundary and then a shell
+# provisioner's environment: raw JSON would need escaping at both hops, and a
+# display name containing a quote or apostrophe would break one of them.
+genai_models_b64() {
+  genai_models_json | jq -c '.' | base64 -w0
+}

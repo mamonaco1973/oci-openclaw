@@ -56,6 +56,16 @@ variable "region" {
   default     = ""
 }
 
+variable "models_b64" {
+  description = "Base64 JSON model list from genai-config.sh — baked into the image"
+  default     = ""
+}
+
+variable "primary_alias" {
+  description = "Alias agents default to"
+  default     = "llama-maverick"
+}
+
 variable "shape" {
   description = "Build instance shape. E4.Flex is the shape proven across the OCI projects in this repo."
   default     = "VM.Standard.E4.Flex"
@@ -196,7 +206,11 @@ build {
 
   # Run the openclaw gateway briefly to stamp config metadata; register models.
   provisioner "shell" {
-    script          = "./scripts/09-openclaw-init.sh"
+    script = "./scripts/09-openclaw-init.sh"
+    environment_vars = [
+      "OPENCLAW_MODELS_B64=${var.models_b64}",
+      "OPENCLAW_PRIMARY_ALIAS=${var.primary_alias}",
+    ]
     execute_command = "sudo -E bash '{{.Path}}'"
   }
 

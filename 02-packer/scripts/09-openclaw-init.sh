@@ -27,22 +27,65 @@ set -euo pipefail
 #
 # ==============================================================================
 
-echo "NOTE: [openclaw-init] writing placeholder litellm config"
+# ==============================================================================
+# Model configuration is baked HERE, at image-build time — not at first boot.
+# ==============================================================================
+#
+# The model list arrives from genai-config.sh via apply.sh -> packer -var ->
+# OPENCLAW_MODELS_B64. Both the LiteLLM model_list and the OpenClaw provider
+# registration are written below, with litellm and the gateway under this
+# script's control.
+#
+# WHY NOT AT FIRST BOOT. It was, and it never worked reliably. cloud-init runs
+# after systemd has already started both units, so it was rewriting config
+# underneath running services and then restarting them in the right order --
+# which failed repeatedly for reasons that were never pinned down, while the
+# identical commands run by hand minutes later always worked.
+#
+# Building it in removes the race rather than sequencing around it. LiteLLM
+# serves /v1/models straight from this config file — that endpoint needs no OCI
+# credentials — so from the very first boot the proxy advertises the correct
+# models and the gateway's startup probe cannot come up empty. There is no
+# window left to lose.
+#
+# userdata.sh now only injects the API key (which is per-deployment and must
+# not be baked into an image) and restarts litellm once so it picks the key up.
+#
+# ==============================================================================
+
+echo "NOTE: [openclaw-init] decoding model list"
+if [ -z "${OPENCLAW_MODELS_B64:-}" ]; then
+  echo "ERROR: [openclaw-init] OPENCLAW_MODELS_B64 is empty."
+  echo "ERROR: [openclaw-init] apply.sh must pass -var models_b64=..."
+  exit 1
+fi
+
+MODELS_JSON=$(echo "${OPENCLAW_MODELS_B64}" | base64 -d)
+PRIMARY_ALIAS="${OPENCLAW_PRIMARY_ALIAS:-llama-maverick}"
+echo "NOTE: [openclaw-init] $(echo "${MODELS_JSON}" | jq -r 'length') model(s), primary ${PRIMARY_ALIAS}"
+
+echo "NOTE: [openclaw-init] writing litellm config"
 mkdir -p /opt/openclaw
-cat > /opt/openclaw/litellm-config.yaml <<'LITELLM'
-model_list:
-  - model_name: PLACEHOLDER-STALE-PROXY-RESTART-LITELLM
-    litellm_params:
-      model: oci/meta.llama-4-maverick-17b-128e-instruct-fp8
 
-litellm_settings:
-  drop_params: true
-
-general_settings:
-  master_key: "sk-openclaw"
-  drop_params: true
-LITELLM
+# Credentials are deliberately absent: LiteLLM resolves OCI_USER, OCI_TENANCY,
+# OCI_FINGERPRINT, OCI_KEY_FILE, OCI_COMPARTMENT_ID and OCI_REGION from the
+# environment file userdata.sh writes at boot. Naming them per model here would
+# only duplicate that.
+{
+  echo "model_list:"
+  echo "${MODELS_JSON}" | jq -r '.[] |
+    "  - model_name: \(.alias)\n    litellm_params:\n      model: oci/\(.model)\n"'
+  echo "litellm_settings:"
+  echo "  drop_params: true"
+  echo ""
+  echo "general_settings:"
+  echo "  master_key: \"sk-openclaw\""
+  echo "  drop_params: true"
+} > /opt/openclaw/litellm-config.yaml
 chown openclaw:openclaw /opt/openclaw/litellm-config.yaml
+
+echo "NOTE: [openclaw-init] litellm config lists:"
+grep '^  - model_name:' /opt/openclaw/litellm-config.yaml
 
 echo "NOTE: [openclaw-init] starting litellm placeholder"
 sudo -u openclaw /opt/litellm-venv/bin/litellm \
@@ -68,6 +111,43 @@ sudo -u openclaw env HOME=/home/openclaw PATH="${PATH}" bash -c "
   ${OPENCLAW_BIN} approvals allowlist add --agent '*' '/**' || true
   ${OPENCLAW_BIN} approvals allowlist add --agent 'main' '/**' || true
 "
+
+# ------------------------------------------------------------------------------
+# Register the models with OpenClaw — same step userdata.sh used to do at boot.
+# ------------------------------------------------------------------------------
+# The provider blob is assembled with jq so a display name containing a quote
+# or apostrophe cannot break the command, and passed as a single argument
+# rather than interpolated into a quoted shell string.
+# ------------------------------------------------------------------------------
+
+PROVIDER_JSON=$(echo "${MODELS_JSON}" | jq -c '{
+  baseUrl: "http://localhost:4000",
+  apiKey:  "sk-openclaw",
+  models:  [.[] | {id: .alias, name: .display}]
+}')
+
+run_openclaw() {
+  sudo -u openclaw env HOME=/home/openclaw PATH="${PATH}" "${OPENCLAW_BIN}" "$@"
+}
+
+echo "NOTE: [openclaw-init] registering the litellm provider"
+run_openclaw config set models.providers.litellm "${PROVIDER_JSON}" --strict-json \
+  || echo "ERROR: [openclaw-init] provider registration failed"
+
+# Each `models set` also repoints the default model, so the primary is set last
+# to land on the intended one. Do not remove this loop: without it the model
+# picker comes up empty.
+echo "${MODELS_JSON}" | jq -r '.[].alias' | while read -r alias; do
+  if run_openclaw models set "litellm/${alias}"; then
+    echo "NOTE: [openclaw-init] registered litellm/${alias}"
+  else
+    echo "ERROR: [openclaw-init] could not register litellm/${alias}"
+  fi
+done
+
+echo "NOTE: [openclaw-init] setting primary to litellm/${PRIMARY_ALIAS}"
+run_openclaw config set agents.defaults.model.primary "litellm/${PRIMARY_ALIAS}" \
+  || echo "ERROR: [openclaw-init] failed to set the primary model"
 
 echo "NOTE: [openclaw-init] stopping all openclaw and litellm processes"
 # Kill everything running as the openclaw user — this catches the gateway, any
