@@ -229,12 +229,21 @@ if ! run_openclaw config set models.providers.litellm "$${PROVIDER_JSON}" --stri
   echo "ERROR: [models] picker will show whatever the image was built with."
 fi
 
-# NOTE: there is deliberately no per-model `openclaw models set` loop here.
-# That command sets the DEFAULT model, it does not register anything — the
-# provider config written above is what declares which models exist. Calling it
-# once per model just repoints the default N times, last one winning, and
-# writes a config backup each time. aws-openclaw does exactly that; it is
-# harmless there only because the primary is set immediately afterwards.
+# Register each model. `openclaw models set` also repoints the default model
+# as a side effect — the log line it prints is "Default model: ..." — so the
+# primary is set immediately afterwards to land on the intended one.
+#
+# DO NOT "simplify" this loop away. It was removed once, on the reasoning that
+# the provider config above already declares the models and this only sets a
+# default. That reasoning was never tested, and the next build came up with the
+# models missing. aws-openclaw does the same thing; keep it.
+echo "$${MODELS_JSON}" | jq -r '.[].id' | while read -r alias; do
+  if run_openclaw models set "litellm/$${alias}"; then
+    echo "NOTE: [models] registered litellm/$${alias}"
+  else
+    echo "ERROR: [models] could not register litellm/$${alias}"
+  fi
+done
 
 echo "NOTE: [models] setting primary to litellm/$${PRIMARY_ALIAS}"
 if ! run_openclaw config set agents.defaults.model.primary "litellm/$${PRIMARY_ALIAS}"; then
