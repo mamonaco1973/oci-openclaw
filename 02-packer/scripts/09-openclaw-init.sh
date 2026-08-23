@@ -53,7 +53,22 @@ set -euo pipefail
 #
 # ==============================================================================
 
-echo "NOTE: [openclaw-init] decoding model list"
+echo "NOTE: [openclaw-init] reading model list"
+
+# Uploaded by a file provisioner in openclaw.pkr.hcl. NOT passed as
+# environment_vars: Packer only emits those where {{.Vars}} appears in
+# execute_command, and this build overrides execute_command to get sudo, so an
+# env-var handoff silently arrives empty.
+MODELS_ENV=/tmp/openclaw-models.env
+if [ ! -s "${MODELS_ENV}" ]; then
+  echo "ERROR: [openclaw-init] ${MODELS_ENV} is missing or empty."
+  echo "ERROR: [openclaw-init] the file provisioner in openclaw.pkr.hcl did not run."
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+. "${MODELS_ENV}"
+
 if [ -z "${OPENCLAW_MODELS_B64:-}" ]; then
   echo "ERROR: [openclaw-init] OPENCLAW_MODELS_B64 is empty."
   echo "ERROR: [openclaw-init] apply.sh must pass -var models_b64=..."
