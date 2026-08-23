@@ -373,6 +373,43 @@ fi
 echo "NOTE: [services] restarting litellm to load the generated config"
 systemctl restart litellm
 
+# WAIT FOR THE PROXY TO ACTUALLY SERVE MODELS BEFORE TOUCHING THE GATEWAY.
+#
+# The gateway probes http://localhost:4000/v1/models when it starts and caches
+# what it gets. LiteLLM needs 10-15s after a restart before it answers that
+# endpoint, so restarting the two back to back gives the gateway an empty list
+# and OpenClaw comes up with no models defined.
+#
+# This is why restarting both by hand minutes later appears to "fix" it: by
+# then the proxy is warm, so the gateway's probe succeeds. Same commands,
+# different outcome purely because of timing — which made it look like the
+# restarts were not running at all.
+#
+# Poll rather than sleep a fixed amount: model count is the actual readiness
+# signal, and a fixed sleep is either too short on a slow boot or wasted time
+# on a fast one.
+echo "NOTE: [services] waiting for litellm to serve its model list"
+LITELLM_READY=0
+for _ in $(seq 1 45); do
+  if curl -fsS -m 3 http://localhost:4000/v1/models \
+       -H "Authorization: Bearer sk-openclaw" 2>/dev/null \
+       | jq -e '.data | length > 0' > /dev/null 2>&1; then
+    LITELLM_READY=1
+    break
+  fi
+  sleep 2
+done
+
+if [ "$${LITELLM_READY}" -eq 1 ]; then
+  echo "NOTE: [services] litellm is serving $(curl -fsS -m 3 \
+    http://localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw" \
+    | jq -r '.data | length') model(s)"
+else
+  echo "ERROR: [services] litellm did not serve a model list within 90s."
+  echo "ERROR: [services] the gateway will start with an empty model picker."
+  echo "ERROR: [services] check: journalctl -u litellm -n 50"
+fi
+
 echo "NOTE: [services] restarting openclaw-gateway"
 systemctl restart openclaw-gateway
 
