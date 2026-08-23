@@ -1,15 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-# ================================================================================
+# ==============================================================================
 # Systemd Service Installation
-# ================================================================================
+# ==============================================================================
 #
 # Installs litellm.service and openclaw-gateway.service and enables them so
 # they start automatically at boot. Services are NOT started here — userdata.sh
-# writes the litellm config with the models from genai-config.sh before starting.
+# writes the litellm config from genai-config.sh before starting them.
 #
-# ================================================================================
+# ==============================================================================
 
 echo "NOTE: [services] installing service unit files"
 cp /tmp/litellm.service /etc/systemd/system/litellm.service

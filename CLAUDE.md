@@ -58,7 +58,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 
 ---
 
-## THE EIGHT THINGS THAT WILL BITE YOU
+## THE TEN THINGS THAT WILL BITE YOU
 
 These are the differences that actually cost time. Everything else ported
 mechanically from `aws-openclaw`.
@@ -205,6 +205,65 @@ mentioned in prose.
 never writes a literal example of it. If you are tempted to add one, don't —
 add it to this file instead, which is not a template.
 
+### 9. OCI Ubuntu images have a host firewall that only allows SSH
+
+This is the most confusing failure in the whole deploy, because **nothing
+reports an error.** The instance is RUNNING, cloud-init succeeded, `xrdp` is
+`active (running)`, `ss -tlnp` shows it bound to `0.0.0.0:3389`, the NSG and
+the security list both allow 3389 — and the RDP client still times out with
+"nothing listening".
+
+OCI's Ubuntu images ship an iptables INPUT chain that permits only SSH.
+Everything else is dropped **at the host**, and OCI evaluates the host
+firewall, the NSG and the subnet security list independently. Opening two of
+the three gets you nothing.
+
+`userdata.sh` opens it as its first real action:
+
+```bash
+iptables -I INPUT -s 0.0.0.0/0 -j ACCEPT
+```
+
+and persists it with `netfilter-persistent save` at the very end — the rule
+is in memory only otherwise, so the box works all day and then silently stops
+accepting RDP after the first reboot, with cloud-init not re-running to fix
+it because `user_data` executes once. `iptables-persistent` is installed in
+`01-packages.sh` with its debconf answers preseeded, since it would otherwise
+prompt and hang the Packer build on a host with no TTY.
+
+AWS has no host firewall on its Ubuntu AMI, which is exactly why this was
+missed in the port: there was nothing in `aws-openclaw` to port. Every other
+OCI project in this repo does it.
+
+### 10. There is no key-free shell, so the SSH key is not optional
+
+`aws-openclaw` has no SSH key anywhere — it reaches the box through SSM
+Session Manager, which needs no key and no open port. OCI's nearest
+equivalent is the managed Bastion service, and that only forwards to
+instances in a **private** subnet. This host sits in a public one so RDP
+works without a tunnel, so there is no key-free shell path.
+
+The port originally carried that omission across, which left a broken
+instance with no way in at all — precisely when a shell matters most.
+`ssh.tf` now generates an RSA 4096 keypair unconditionally (not behind a
+debug flag) and writes it to `03-openclaw/keys/openclaw_ssh.pem`, 0600 and
+gitignored. `var.additional_ssh_public_key` authorises a second key for
+debugging from a machine without the Terraform state.
+
+**The serial console needs no key at all** and works when SSH, the network
+stack or the host firewall is broken:
+
+```bash
+CH=$(oci compute instance-console-history capture \
+      --instance-id <ocid> --query data.id --raw-output)
+oci compute instance-console-history get-content \
+      --instance-console-history-id $CH --file - --length 200000
+```
+
+`userdata.sh` redirects its output to `/dev/console`, so that reproduces the
+entire boot log without logging in. Reach for it before assuming an
+instance is unreachable.
+
 ---
 
 ## Model Selection
@@ -330,9 +389,6 @@ retrying it.
 - **No architecture diagram yet.** `aws-openclaw.drawio` / `.png` were removed
   rather than left describing the wrong cloud; an `oci-openclaw.drawio` still
   needs drawing.
-- **`00-resources/` still holds the AWS video assets** (`VIDEO.md`,
-  `video-script.md`, `thumbnail.png`). Left in place deliberately — they are
-  the AWS video's, not this project's, and need replacing before any OCI video.
 - `terraform validate` was never run against these modules: the provider
   plugins crash on the authoring workstation. `terraform fmt` parses both
   modules cleanly, so syntax is good, but semantics are unproven until the

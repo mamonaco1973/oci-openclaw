@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# ================================================================================
+# ==============================================================================
 # OpenClaw Config Initialization
-# ================================================================================
+# ==============================================================================
 #
 # Runs the openclaw gateway briefly as the openclaw user to stamp the config
 # file with internal metadata. Without this step, openclaw detects a
@@ -25,7 +25,7 @@ set -euo pipefail
 # starts happily here on a build host that has none. userdata.sh replaces this
 # file wholesale at first boot with the models from genai-config.sh.
 #
-# ================================================================================
+# ==============================================================================
 
 echo "NOTE: [openclaw-init] writing placeholder litellm config"
 mkdir -p /opt/openclaw

@@ -1,5 +1,5 @@
 #!/bin/bash
-# ================================================================================
+# ==============================================================================
 # validate.sh
 #
 # Post-deploy summary for the OpenClaw AI Agent Workstation.
@@ -12,7 +12,7 @@
 # Requirements:
 #   - terraform CLI installed and authenticated
 #   - Terraform state must exist (run apply.sh first)
-# ================================================================================
+# ==============================================================================
 
 set -euo pipefail
 
@@ -21,9 +21,9 @@ TF_DIR="${SCRIPT_DIR}/03-openclaw"
 
 source "${SCRIPT_DIR}/genai-config.sh"
 
-# ================================================================================
+# ==============================================================================
 # Read Terraform outputs
-# ================================================================================
+# ==============================================================================
 
 cd "${TF_DIR}"
 
@@ -33,9 +33,9 @@ PASSWORD="$(terraform output -raw openclaw_password    2>/dev/null || echo '<not
 
 cd "${SCRIPT_DIR}"
 
-# ================================================================================
+# ==============================================================================
 # Quick Start Output
-# ================================================================================
+# ==============================================================================
 
 echo ""
 echo "============================================================================"
@@ -54,9 +54,9 @@ echo ""
 printf "%-28s %s\n" "NOTE: OpenClaw UI:"   "http://localhost:18789 (in Chrome, on the desktop)"
 echo ""
 
-# ================================================================================
+# ==============================================================================
 # Model table — driven by GENAI_MODELS, so it matches what was deployed
-# ================================================================================
+# ==============================================================================
 
 echo "NOTE: Models configured (${#GENAI_MODELS[@]}):"
 for entry in "${GENAI_MODELS[@]}"; do
@@ -74,12 +74,24 @@ echo "First boot takes a couple of minutes after the instance reports RUNNING."
 echo "Cloud-init sets the password, writes the model config and starts the"
 echo "services; RDP will refuse the login until it has finished. Watch it with:"
 echo ""
-echo "  ssh ubuntu@${PUBLIC_IP} sudo tail -f /root/userdata.log"
+echo "  ssh -i 03-openclaw/keys/openclaw_ssh.pem ubuntu@${PUBLIC_IP} \\"
+echo "      sudo tail -f /root/userdata.log"
+echo ""
+echo "If the instance never got far enough to accept SSH, read the boot log from"
+echo "the serial console instead. It needs no key and no working network, and"
+echo "every NOTE: line userdata.sh prints goes there:"
+echo ""
+echo "  CH=\$(oci compute instance-console-history capture \\"
+echo "        --region ${OCI_REGION} --instance-id ${INSTANCE_ID} \\"
+echo "        --query data.id --raw-output)"
+echo "  oci compute instance-console-history get-content \\"
+echo "        --region ${OCI_REGION} --instance-console-history-id \$CH \\"
+echo "        --file - --length 200000 | grep -E 'NOTE:|ERROR'"
 echo ""
 
-# ================================================================================
+# ==============================================================================
 # Tool-calling check
-# ================================================================================
+# ==============================================================================
 #
 # check_env.sh proved every model answers a chat call. It could NOT prove any
 # of them emits a tool call, and OpenClaw is useless without one. There is no
@@ -87,7 +99,7 @@ echo ""
 #
 # Built with a quoted heredoc so the JSON survives verbatim; only the model
 # alias is substituted.
-# ================================================================================
+# ==============================================================================
 
 echo "----------------------------------------------------------------------------"
 echo "VERIFY TOOL CALLING BEFORE TRUSTING THE DEPLOY"

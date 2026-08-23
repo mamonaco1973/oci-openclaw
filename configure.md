@@ -71,7 +71,7 @@ sudo tail /root/userdata.log
 
 `check_env.sh` proved the models answer a chat call. It could **not** prove
 they emit a tool call, and OpenClaw is useless without one. Nothing offline can
-settle it. Run this on the desktop:
+settle it, so run this on the desktop.
 
 `validate.sh` prints this command with your configured primary already filled
 in, so copy it from there rather than editing the alias below by hand:
@@ -126,3 +126,5 @@ session and nowhere else.
 | `oci email` fails | Expected. The instance principal has no Email Delivery permission — use `mail` (msmtp) |
 | Change or add models | Edit the `GENAI_MODELS` array in `genai-config.sh` and re-apply `03-openclaw` — the LiteLLM config and the OpenClaw picker are both regenerated at boot. For a throwaway test, edit `/opt/openclaw/litellm-config.yaml` and `sudo systemctl restart litellm` |
 | Services not started | Check cloud-init: `sudo cat /root/userdata.log` |
+| RDP times out / "nothing listening" on 3389 | The OCI host firewall. `xrdp` will look perfectly healthy and `ss -tlnp` will show it bound. Check `sudo iptables -L INPUT -n --line-numbers` for the ACCEPT rule; add it with `sudo iptables -I INPUT -s 0.0.0.0/0 -j ACCEPT` then `sudo netfilter-persistent save` |
+| RDP worked, then stopped after a reboot | The iptables rule was never persisted. `sudo netfilter-persistent save` |

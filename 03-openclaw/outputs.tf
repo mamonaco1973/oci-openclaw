@@ -31,3 +31,8 @@ output "openclaw_password" {
   value       = local.openclaw_password
   sensitive   = true
 }
+
+output "ssh_private_key_path" {
+  description = "Generated SSH private key for shell access to the instance"
+  value       = local_file.ssh_private_key.filename
+}

@@ -141,3 +141,17 @@ variable "primary_alias" {
     error_message = "primary_alias must be one of the aliases in var.models."
   }
 }
+
+# ==============================================================================
+# SECTION: SSH
+# ------------------------------------------------------------------------------
+# A key is always generated (see ssh.tf). This adds a second one so you can get
+# in with a key you already hold, rather than the generated .pem — useful when
+# debugging from a machine that does not have the Terraform state.
+# ==============================================================================
+
+variable "additional_ssh_public_key" {
+  description = "Extra SSH public key to authorise on the instance, alongside the generated one"
+  type        = string
+  default     = ""
+}

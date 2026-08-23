@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# ================================================================================
+# ==============================================================================
 # Base Packages
-# ================================================================================
+# ==============================================================================
 #
 # XRDP and snap-confined packages interfere with each other, so snap is removed
 # outright and pinned so nothing reinstalls it during the image lifetime.
@@ -21,7 +21,7 @@ set -euo pipefail
 #      design anyway: access is direct RDP over a public IP, not a managed
 #      session broker.
 #
-# ================================================================================
+# ==============================================================================
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -38,6 +38,18 @@ echo "NOTE: [packages] snap removed"
 
 echo "NOTE: [packages] installing base packages"
 apt-get update -y
+
+# iptables-persistent prompts for whether to save the current rules, which
+# would hang the Packer build forever on a host with no TTY. Preseed both
+# answers so the install is silent.
+#
+# It is needed because OCI's Ubuntu images block every inbound port except SSH
+# at the host, and userdata.sh opens that firewall at first boot — a rule that
+# lives in memory only until `netfilter-persistent save` writes it down. AWS
+# has no host firewall on its Ubuntu AMI, so aws-openclaw needs none of this.
+echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections
+echo "iptables-persistent iptables-persistent/autosave_v6 boolean false" | debconf-set-selections
+
 apt-get install -y \
   curl \
   ca-certificates \
@@ -45,7 +57,8 @@ apt-get install -y \
   unzip \
   wget \
   python3-venv \
-  python3-pip
+  python3-pip \
+  iptables-persistent
 echo "NOTE: [packages] done"
 
 echo "NOTE: [packages] removing LibreOffice"

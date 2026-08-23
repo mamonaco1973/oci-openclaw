@@ -1,15 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-# ================================================================================
+# ==============================================================================
 # XRDP
-# ================================================================================
+# ==============================================================================
 #
 # Installs XRDP and replaces /etc/xrdp/startwm.sh so all RDP logins launch
 # an LXQt session via Openbox. Lowers color depth to 16bpp for better RDP
 # performance. Openbox has no compositor so no additional tuning is needed.
 #
-# ================================================================================
+# ==============================================================================
 
 export DEBIAN_FRONTEND=noninteractive
 

@@ -36,6 +36,9 @@ echo "NOTE: Password - ${PASSWORD}"
 echo ""
 echo "NOTE: Once connected, open Chrome on the desktop and browse to:"
 echo "NOTE:   http://localhost:18789"
+echo ""
+echo "NOTE: Shell access for debugging:"
+echo "NOTE:   ssh -i 03-openclaw/keys/openclaw_ssh.pem ubuntu@${PUBLIC_IP}"
 
 # The gateway binds loopback only, so the UI is reachable from inside the RDP
 # session and nowhere else.

@@ -79,7 +79,15 @@ resource "oci_core_instance" "openclaw" {
   }
 
   # user_data must be base64 on OCI — unlike AWS, which accepts it raw.
+  # ssh_authorized_keys goes in metadata alongside user_data. compact()
+  # drops the additional key when it is empty, so the instance never ends
+  # up with a stray blank line in authorized_keys.
   metadata = {
+    ssh_authorized_keys = join("\n", compact([
+      trimspace(tls_private_key.ssh.public_key_openssh),
+      trimspace(var.additional_ssh_public_key),
+    ]))
+
     user_data = base64encode(templatefile("${path.module}/scripts/userdata.sh", {
       openclaw_password = local.openclaw_password
 

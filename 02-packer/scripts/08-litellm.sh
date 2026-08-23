@@ -1,15 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-# ================================================================================
+# ==============================================================================
 # LiteLLM Proxy
-# ================================================================================
+# ==============================================================================
 #
 # Creates a Python virtual environment at /opt/litellm-venv and installs the
 # LiteLLM proxy package. The config directory /opt/openclaw is owned by the
 # openclaw user so userdata.sh can write litellm-config.yaml at boot.
 #
-# ================================================================================
+# ==============================================================================
 
 echo "NOTE: [litellm] creating venv at /opt/litellm-venv"
 python3 -m venv /opt/litellm-venv

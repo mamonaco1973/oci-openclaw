@@ -250,8 +250,6 @@ while leaving billable resources running.
   the most likely thing to require a model swap.
 - **No architecture diagram yet.** The AWS `.drawio`/`.png` were removed rather
   than left describing the wrong cloud.
-- **`00-resources/` still holds the AWS video assets** — they belong to the AWS
-  video and need replacing before any OCI video.
 - `terraform validate` has not been run against these modules: the provider
   plugins crash on the authoring workstation. `terraform fmt` parses both
   modules cleanly, so syntax is sound, but semantics are unproven until the

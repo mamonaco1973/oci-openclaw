@@ -157,7 +157,8 @@ build {
     execute_command = "sudo -E bash '{{.Path}}'"
   }
 
-  # Install cloud CLIs and dev tooling (git, OCI, AWS, HashiCorp, az, gcloud, VS Code).
+  # Install cloud CLIs and dev tooling: git, OCI, AWS, HashiCorp, az, gcloud,
+  # VS Code.
   provisioner "shell" {
     script          = "./scripts/05-tools.sh"
     execute_command = "sudo -E bash '{{.Path}}'"
