@@ -58,7 +58,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 
 ---
 
-## THE TEN THINGS THAT WILL BITE YOU
+## THE ELEVEN THINGS THAT WILL BITE YOU
 
 These are the differences that actually cost time. Everything else ported
 mechanically from `aws-openclaw`.
@@ -258,6 +258,29 @@ oci compute instance-console-history get-content \
 entire boot log without logging in. Reach for it before assuming an
 instance is unreachable.
 
+### 11. `systemctl start` is a no-op on a service already running
+
+`10-services.sh` **enables** litellm and openclaw-gateway at image-build
+time, so systemd starts them during boot — loading the placeholder config
+baked into the image — well before cloud-init rewrites that config.
+
+By the time `userdata.sh` reaches the end, both are already running, and
+`systemctl start` on a running unit is a **silent** no-op: exit 0, nothing
+logged, old config still loaded. `userdata.sh` therefore ends with
+`systemctl restart`, not `start`.
+
+The symptom is badly misleading: the model picker offers a model LiteLLM
+has never heard of, OpenClaw says *"The selected model was not found by the
+provider"*, and `/root/userdata.log` shows every single step succeeding —
+because every step did.
+
+`aws-openclaw` has the identical race and never trips it: its build-time
+placeholder lists the same four Bedrock models as the runtime config, so a
+stale proxy happens to serve the right names. Splitting those two apart is
+what exposed it here. The placeholder model is now named
+`PLACEHOLDER-STALE-PROXY-RESTART-LITELLM` so a stale proxy names its own
+diagnosis in the model picker.
+
 ---
 
 ## Model Selection
@@ -377,13 +400,14 @@ retrying it.
 
 ## Known Gaps
 
-- **Tool calling is unverified.** It could not be checked from the build
-  workstation. Run the curl in `validate.sh` output on first deploy. This is
-  the most likely thing to require a model swap.
+- **Tool calling is VERIFIED.** `meta.llama-4-maverick-17b-128e-instruct-fp8`
+  returns a populated `tool_calls` array through LiteLLM's `oci/` provider,
+  confirmed against a live deploy on 2026-08-23. Re-run the curl that
+  `validate.sh` prints after any model change: chat working does not imply
+  tool calling works, and an agentic coder is useless without it.
 - **No architecture diagram yet.** `aws-openclaw.drawio` / `.png` were removed
   rather than left describing the wrong cloud; an `oci-openclaw.drawio` still
   needs drawing.
-- `terraform validate` was never run against these modules: the provider
-  plugins crash on the authoring workstation. `terraform fmt` parses both
-  modules cleanly, so syntax is good, but semantics are unproven until the
-  first real apply.
+- `terraform validate` cannot run on the authoring workstation — the provider
+  plugins crash there. Both modules have since applied cleanly end to end on a
+  real deploy, so this is a tooling gap rather than a correctness one.

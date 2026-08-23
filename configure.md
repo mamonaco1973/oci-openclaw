@@ -123,5 +123,6 @@ session and nowhere else.
 | `oci email` fails | Expected. The instance principal has no Email Delivery permission — use `mail` (msmtp) |
 | Change or add models | Edit the `GENAI_MODELS` array in `genai-config.sh` and re-apply `03-openclaw` — the LiteLLM config and the OpenClaw picker are both regenerated at boot. For a throwaway test, edit `/opt/openclaw/litellm-config.yaml` and `sudo systemctl restart litellm` |
 | Services not started | Check cloud-init: `sudo cat /root/userdata.log` |
+| "Selected model was not found by the provider" | LiteLLM is running a stale config. `curl -s localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw" | jq -r .data[].id` — if it lists `PLACEHOLDER-STALE-PROXY-RESTART-LITELLM`, the proxy started at boot before cloud-init wrote the real config. `sudo systemctl restart litellm` |
 | RDP times out / "nothing listening" on 3389 | The OCI host firewall. `xrdp` will look perfectly healthy and `ss -tlnp` will show it bound. Check `sudo iptables -L INPUT -n --line-numbers` for the ACCEPT rule; add it with `sudo iptables -I INPUT -s 0.0.0.0/0 -j ACCEPT` then `sudo netfilter-persistent save` |
 | RDP worked, then stopped after a reboot | The iptables rule was never persisted. `sudo netfilter-persistent save` |

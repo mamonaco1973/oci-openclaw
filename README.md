@@ -243,12 +243,12 @@ while leaving billable resources running.
 
 ## Known Gaps
 
-- **Tool calling is unverified.** It could not be checked from the authoring
-  workstation. Run the curl in `validate.sh` output on first deploy; this is
-  the most likely thing to require a model swap.
+- **Tool calling is verified.** Llama 4 Maverick returns a populated
+  `tool_calls` array through LiteLLM's `oci/` provider. Re-run the curl that
+  `validate.sh` prints after any model change — chat working does not imply
+  tool calling works.
 - **No architecture diagram yet.** The AWS `.drawio`/`.png` were removed rather
   than left describing the wrong cloud.
-- `terraform validate` has not been run against these modules: the provider
-  plugins crash on the authoring workstation. `terraform fmt` parses both
-  modules cleanly, so syntax is sound, but semantics are unproven until the
-  first real apply.
+- `terraform validate` cannot run on the authoring workstation — the provider
+  plugins crash there. Both modules have since applied cleanly end to end on a
+  real deploy.

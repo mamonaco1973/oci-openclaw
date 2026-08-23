@@ -31,7 +31,7 @@ echo "NOTE: [openclaw-init] writing placeholder litellm config"
 mkdir -p /opt/openclaw
 cat > /opt/openclaw/litellm-config.yaml <<'LITELLM'
 model_list:
-  - model_name: placeholder
+  - model_name: PLACEHOLDER-STALE-PROXY-RESTART-LITELLM
     litellm_params:
       model: oci/meta.llama-4-maverick-17b-128e-instruct-fp8
 

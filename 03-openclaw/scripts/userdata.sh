@@ -229,14 +229,12 @@ if ! run_openclaw config set models.providers.litellm "$${PROVIDER_JSON}" --stri
   echo "ERROR: [models] picker will show whatever the image was built with."
 fi
 
-# Register each alias, then set the primary last so it ends up selected.
-echo "$${MODELS_JSON}" | jq -r '.[].id' | while read -r alias; do
-  if run_openclaw models set "litellm/$${alias}"; then
-    echo "NOTE: [models] registered litellm/$${alias}"
-  else
-    echo "ERROR: [models] could not register litellm/$${alias}"
-  fi
-done
+# NOTE: there is deliberately no per-model `openclaw models set` loop here.
+# That command sets the DEFAULT model, it does not register anything — the
+# provider config written above is what declares which models exist. Calling it
+# once per model just repoints the default N times, last one winning, and
+# writes a config backup each time. aws-openclaw does exactly that; it is
+# harmless there only because the primary is set immediately afterwards.
 
 echo "NOTE: [models] setting primary to litellm/$${PRIMARY_ALIAS}"
 if ! run_openclaw config set agents.defaults.model.primary "litellm/$${PRIMARY_ALIAS}"; then
@@ -348,11 +346,26 @@ fi
 # Start Services
 # ==============================================================================
 
-echo "NOTE: [services] starting litellm"
-systemctl start litellm
+# RESTART, NOT START. Both units are enabled at image-build time, so systemd
+# brings them up during boot — with the placeholder config baked into the
+# image — well before cloud-init gets here and rewrites that config. By this
+# point they are already running, and `systemctl start` on a running service
+# is a silent no-op: it returns 0, logs nothing, and leaves the old config
+# loaded.
+#
+# The symptom is that the model picker offers a model LiteLLM has never heard
+# of, and OpenClaw reports "The selected model was not found by the provider"
+# while /root/userdata.log shows every step succeeding.
+#
+# aws-openclaw has the same race and never trips it, because its build-time
+# placeholder lists the same four Bedrock models the runtime config does — so
+# a stale proxy happens to serve the right names anyway.
 
-echo "NOTE: [services] starting openclaw-gateway"
-systemctl start openclaw-gateway
+echo "NOTE: [services] restarting litellm to load the generated config"
+systemctl restart litellm
+
+echo "NOTE: [services] restarting openclaw-gateway"
+systemctl restart openclaw-gateway
 
 echo "NOTE: [services] done"
 
