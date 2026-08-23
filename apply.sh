@@ -148,12 +148,9 @@ cd 02-packer || { echo "ERROR: Directory 02-packer not found"; exit 1; }
 
 echo "NOTE: Building the OpenClaw image with Packer..."
 
-# OCI_CLI_REGION rather than a -var: the Packer oracle plugin reads region from
-# the OCI config/environment, not from a template variable.
-export OCI_CLI_REGION="${OCI_REGION}"
-
 packer init ./openclaw.pkr.hcl
 packer build \
+  -var "region=${OCI_REGION}" \
   -var "compartment_ocid=${OCI_COMPARTMENT_ID}" \
   -var "availability_domain=${AD}" \
   -var "base_image_ocid=${BASE_IMAGE_OCID}" \

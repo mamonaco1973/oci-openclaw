@@ -58,7 +58,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 
 ---
 
-## THE SIX THINGS THAT WILL BITE YOU
+## THE SEVEN THINGS THAT WILL BITE YOU
 
 These are the differences that actually cost time. Everything else ported
 mechanically from `aws-openclaw`.
@@ -161,6 +161,29 @@ mail, so `var.svc_user_email` defaults to the reserved `.invalid` TLD
 (RFC 2606) — format-valid, guaranteed undeliverable, impossible to mistake
 for a real mailbox. Override it only if IDCS demands a resolvable domain or
 the address collides with an existing user.
+
+### 7. Packer ignores OCI_CLI_REGION and builds in the config-file region
+
+The `oracle-oci` plugin uses the OCI **Go SDK**, which takes its region from
+`~/.oci/config`. It does **not** read `OCI_CLI_REGION` — that is an OCI *CLI*
+variable and the plugin never looks at it.
+
+`apply.sh` resolves the availability domain, subnet and base image in
+`us-chicago-1`. If the config file points at `us-ashburn-1`, the launch goes
+to Ashburn carrying Chicago identifiers that mean nothing there, and fails
+with a bare `400 CannotParseRequest` that names no field and no region:
+
+```
+Problem creating instance: ... Error Code: CannotParseRequest
+Request Endpoint: POST https://iaas.us-ashburn-1.oraclecloud.com/20160918/instances
+```
+
+**The Request Endpoint line is the diagnostic** — it names the region actually
+used. Compare it against the `NOTE: Region` line `apply.sh` prints.
+
+The fix is the builder's own `region` field, set from `-var region=`, which
+overrides the config file. Note it is incompatible with
+`use_instance_principals`, should this ever move to that auth mode.
 
 ---
 

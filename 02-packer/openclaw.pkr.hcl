@@ -51,6 +51,11 @@ variable "subnet_ocid" {
   default     = ""
 }
 
+variable "region" {
+  description = "Region to build in. MUST be passed explicitly -- see the note on the source block."
+  default     = ""
+}
+
 variable "shape" {
   description = "Build instance shape. E4.Flex is the shape proven across the OCI projects in this repo."
   default     = "VM.Standard.E4.Flex"
@@ -66,6 +71,20 @@ variable "shape" {
 # ==============================================================================
 
 source "oracle-oci" "openclaw" {
+  # WITHOUT THIS, PACKER BUILDS IN THE WRONG REGION.
+  #
+  # The oracle-oci plugin uses the OCI Go SDK, which takes its region from
+  # ~/.oci/config. It does NOT read OCI_CLI_REGION -- that is an OCI *CLI*
+  # variable and the plugin never looks at it. apply.sh resolves the
+  # availability domain, subnet and base image in var.region, so if the
+  # config file points somewhere else the launch goes to that other region
+  # carrying identifiers that mean nothing there, and fails with a bare
+  # 400 CannotParseRequest that names no field.
+  #
+  # Check the Request Endpoint in any failure: it names the region actually
+  # used.
+  region = var.region
+
   compartment_ocid    = var.compartment_ocid
   availability_domain = var.availability_domain
   base_image_ocid     = var.base_image_ocid
