@@ -24,8 +24,7 @@ output "openclaw_username" {
   value       = "openclaw"
 }
 
-# There is no Vault to read this back from, by design — see accounts.tf.
-# get_password.sh calls `terraform output -raw openclaw_password`.
+# get_password.sh reads this with `terraform output -raw openclaw_password`.
 output "openclaw_password" {
   description = "Password for the openclaw desktop user"
   value       = local.openclaw_password

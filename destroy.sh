@@ -158,6 +158,4 @@ echo "==========================================================================
 echo "  Teardown complete — nothing left running."
 echo "================================================================================"
 echo "  The openclaw-svc user, its API key and both policies are gone with 01-core."
-echo "  No OCI Vault was used, so there is no 30-day pending-deletion hold to wait"
-echo "  out before the next apply."
 echo "================================================================================"

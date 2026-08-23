@@ -7,17 +7,8 @@
 # Format: <word>-<6-digit-number>, e.g. "rocket-482910" — memorable enough to
 # type into an RDP prompt, which is the only place it is ever used.
 #
-# WHY THIS IS NOT IN OCI VAULT, unlike the AWS build's Secrets Manager entry:
-# OCI holds a deleted vault in PENDING_DELETION for a mandatory 30 days, during
-# which it still counts against a default tenancy limit of one vault. Any
-# destroy/rebuild cycle then fails on LimitExceeded until the hold expires, and
-# the documented workaround is to manually cancel the deletion and re-import.
-# That is incompatible with a project whose whole point is apply/destroy on
-# demand, so this repo follows the convention the other OCI projects here
-# settled on: the password lives in tfstate and get_password.sh reads it back.
-#
-# tfstate therefore contains secrets. It is gitignored, and so is everything
-# else Terraform writes.
+# The password lives in terraform.tfstate, which is gitignored, and
+# get_password.sh reads it back.
 # ==============================================================================
 
 # ==============================================================================

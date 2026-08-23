@@ -14,8 +14,7 @@
 # unconditionally rather than behind a "debug" toggle.
 #
 # The private key is written to ./keys/ with 0600 and is gitignored (*.pem).
-# It is also in tfstate, like every other secret in this project — see the note
-# in accounts.tf about why OCI Vault is not used.
+# It is also in tfstate, like every other secret in this project.
 #
 # NOT the only way in. The serial console needs no key at all and works even
 # when the network stack or the host firewall is broken:

@@ -23,8 +23,7 @@ This is the Oracle port of [`aws-openclaw`](../../aws-openclaw), alongside
   only for Generative AI.
 - **Cross-region IAM handling.** Tenancy-level identity is applied through a
   home-region provider alias, which OCI requires and does not tell you about.
-- **Clean apply/destroy.** No OCI Vault, therefore no 30-day pending-deletion
-  hold blocking the next deploy.
+- **Clean apply/destroy.** Nothing left behind to block the next deploy.
 
 ---
 
@@ -224,8 +223,7 @@ the box that holds key material — written at first boot to
 and never committed.
 
 `terraform.tfstate` contains the desktop password and the API private key. It
-is gitignored. There is no OCI Vault by design — see
-[CLAUDE.md](CLAUDE.md#3-no-oci-vault--on-purpose).
+is gitignored.
 
 ---
 

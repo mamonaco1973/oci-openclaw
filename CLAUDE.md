@@ -110,18 +110,12 @@ provider "oci" {
 resource in `01-core/identity.tf` and `03-openclaw/iam.tf` sets
 `provider = oci.home`.
 
-### 3. No OCI Vault — on purpose
+### 3. Do not add OCI Vault
 
-OCI holds a deleted vault in `PENDING_DELETION` for a mandatory **30 days**,
-during which it still counts against a default tenancy limit of **one** vault.
-Any apply/destroy loop then fails on `LimitExceeded`, and the documented
-workaround is to manually cancel the deletion and re-import. That is
-incompatible with a project whose whole point is deploy-on-demand.
-
-So secrets live in `terraform.tfstate` and reach the instance via
-`templatefile`, matching what `oci-xubuntu-xrdp` settled on. `get_password.sh`
-reads the password back with `terraform output`. **tfstate contains secrets and
-is gitignored.**
+A deleted vault sits in `PENDING_DELETION` for a mandatory 30 days while still
+counting against a default tenancy limit of one, so any apply/destroy loop
+wedges on `LimitExceeded`. Secrets live in `terraform.tfstate` here, which is
+gitignored.
 
 ### 4. Dynamic group matching rules, and the boot-time token cache
 

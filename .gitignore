@@ -1,7 +1,24 @@
+# Terraform working state
 .terraform
 *.tfstate
 *.tfstate.backup
 *.terraform.lock.hcl
 *.terraform.*
+crash.log
+crash.*.log
+
+# Key material.
+#
+# tfstate above matters as much as the patterns below: it holds the openclaw
+# desktop password, the LiteLLM API signing key and the SSH private key.
+#
+# keys/ is listed explicitly rather than relying on the extension patterns, so
+# a key saved under some other name is still caught.
 *.pem
 *.pub
+*.key
+03-openclaw/keys/*
+!03-openclaw/keys/.gitkeep
+
+# Local overrides
+env.sh
