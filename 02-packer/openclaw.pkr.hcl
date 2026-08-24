@@ -56,16 +56,6 @@ variable "region" {
   default     = ""
 }
 
-variable "models_b64" {
-  description = "Base64 JSON model list from genai-config.sh — baked into the image"
-  default     = ""
-}
-
-variable "primary_alias" {
-  description = "Alias agents default to"
-  default     = "gpt-oss-120b"
-}
-
 variable "shape" {
   description = "Build instance shape. E4.Flex is the shape proven across the OCI projects in this repo."
   default     = "VM.Standard.E4.Flex"
@@ -121,20 +111,6 @@ source "oracle-oci" "openclaw" {
 
 build {
   sources = ["source.oracle-oci.openclaw"]
-
-  # Model list from genai-config.sh, written as a sourceable env file.
-  #
-  # A file rather than environment_vars: Packer only emits those where
-  # {{.Vars}} appears in execute_command, and this build overrides
-  # execute_command to get sudo. Passing them as env silently dropped them.
-  # A file also survives inspection on the build host if it ever misbehaves.
-  provisioner "file" {
-    content     = <<-EOT
-      OPENCLAW_MODELS_B64=${var.models_b64}
-      OPENCLAW_PRIMARY_ALIAS=${var.primary_alias}
-    EOT
-    destination = "/tmp/openclaw-models.env"
-  }
 
   # Upload systemd unit files and the launcher icon.
   provisioner "file" {

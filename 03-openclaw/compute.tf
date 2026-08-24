@@ -98,6 +98,16 @@ resource "oci_core_instance" "openclaw" {
       litellm_fingerprint = local.litellm_fingerprint
       litellm_private_key = local.litellm_private_key
 
+      # The raw list drives the LiteLLM model_list via a %{ for } loop in the
+      # template. models_b64 is the same data pre-encoded for the OpenClaw
+      # CLI. It is base64 so it can be dropped into the shell script as a
+      # single opaque token: raw JSON interpolated into bash breaks the moment
+      # a display name contains an apostrophe, and base64 output is
+      # alphanumeric plus +/= so no quoting case exists at all.
+      models        = var.models
+      models_b64    = base64encode(jsonencode([for m in var.models : { id = m.alias, name = m.display }]))
+      primary_alias = var.primary_alias
+
       smtp_host     = local.smtp_host
       smtp_username = local.smtp_username
       smtp_password = local.smtp_password
