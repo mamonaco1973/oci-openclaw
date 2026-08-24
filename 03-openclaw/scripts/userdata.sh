@@ -45,6 +45,7 @@ trap 'echo "ERROR at line $LINENO"; exit 1' ERR
 
 echo "NOTE: user-data start: $(date -Is)"
 
+systemctl stop xrdp
 
 # ==============================================================================
 # Host Firewall
@@ -429,5 +430,6 @@ echo "NOTE: [firewall] persisted"
 
 sleep 60
 systemctl start openclaw-gateway
+systemctl start xrdp
 
 echo "NOTE: user-data complete: $(date -Is)"

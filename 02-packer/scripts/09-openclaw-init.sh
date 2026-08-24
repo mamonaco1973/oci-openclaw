@@ -92,6 +92,7 @@ following capabilities:
 - **OCI CLI**: Authenticates with the instance principal — no keys, no config file. Always pass `--auth instance_principal`.
 - **Your own compartment/region**: never ask the user for these. Read them from the metadata service: `curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/instance/ | jq -r .compartmentId`
 - **`Missing option(s) --compartment-id`** means the argument was omitted — not a permissions failure and not a hang. Look the value up and retry.
+- **Web**: Apache2 serves /var/www/html (world-writable) at http://localhost/ — write a file there and open it in the browser.
 - **Email**: Send via the `mail` command (msmtp + OCI Email Delivery): `echo "body" | mail -s "Subject" recipient@example.com`
 - **Cost**: Use `oci --auth instance_principal usage-api usage-summary request-summarized-usages`.
 
@@ -183,6 +184,18 @@ curl -s http://localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw"
 The available models are set at deploy time and vary per deployment, so
 query them rather than assuming. The primary is whichever OpenClaw has
 selected by default.
+
+## Web publishing
+Apache2 is installed and running. The document root is `/var/www/html`, and it
+is world-writable, so you can publish a page with the exec tool and no sudo:
+
+```bash
+echo "<h1>hello</h1>" > /var/www/html/index.html
+```
+
+It is then served at http://localhost/ — open that with the browser tool to
+show the user the result. Port 80 is not reachable from outside the instance,
+so this is for showing things on the desktop, not for publishing to the web.
 
 ## Email
 msmtp is configured system-wide with OCI Email Delivery SMTP credentials.
