@@ -120,7 +120,6 @@ session and nowhere else.
 | Model replies but never calls tools | Switch `GENAI_PRIMARY` in `genai-config.sh` and re-apply `03-openclaw`. Test any model with the tool-calling curl before assuming it cannot — gpt-oss-120b has been observed driving tools despite community configs claiming otherwise |
 | `oci` CLI fails with `ConfigFileNotFound` | The `--auth instance_principal` flag was omitted. There is no `~/.oci/config` on this box by design |
 | `oci` CLI returns 404 on everything | The instance booted before the dynamic group existed. The principal token caches group membership at boot — **restart the instance** |
-| `oci email` fails | Expected. The instance principal has no Email Delivery permission — use `mail` (msmtp) |
 | Change or add models | Edit the `GENAI_MODELS` array in `genai-config.sh` and re-apply `03-openclaw` — the LiteLLM config and the OpenClaw picker are both regenerated at boot. For a throwaway test, edit `/opt/openclaw/litellm-config.yaml` and `sudo systemctl restart litellm` |
 | Services not started | Check cloud-init: `sudo cat /root/userdata.log` |
 | "Selected model was not found by the provider" | LiteLLM is running a stale config. `curl -s localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw" | jq -r .data[].id` — if it lists `PLACEHOLDER-STALE-PROXY-RESTART-LITELLM`, the proxy started at boot before cloud-init wrote the real config. `sudo systemctl restart litellm` |

@@ -36,7 +36,7 @@ resource "oci_identity_user" "openclaw_svc" {
   provider       = oci.home
   compartment_id = var.tenancy_ocid
   name           = "openclaw-svc"
-  description    = "OpenClaw LiteLLM proxy — Generative AI invocation and Email Delivery SMTP"
+  description    = "OpenClaw LiteLLM proxy — Generative AI invocation"
 
   # Required by Identity Domains — see var.svc_user_email. This user never
   # signs in and never receives mail; the address exists only to satisfy the

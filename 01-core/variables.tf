@@ -29,14 +29,6 @@ variable "vcn_name" {
   default     = "clawd-vcn"
 }
 
-# Leave empty to skip Email Delivery entirely. When set, OCI creates an
-# approved sender for this address and SMTP credentials the instance uses to
-# send mail — the OCI counterpart of the SES identity in aws-openclaw.
-variable "email_sender" {
-  description = "Address to register as an OCI Email Delivery approved sender (empty disables email)"
-  type        = string
-  default     = ""
-}
 
 # ==============================================================================
 # SECTION: Service User Email

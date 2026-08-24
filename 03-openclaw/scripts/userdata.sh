@@ -26,8 +26,8 @@
 #      key to /etc/litellm-key.pem.
 #   3. Write /opt/openclaw/litellm-config.yaml — one entry per configured model.
 #   4. Register those same models with OpenClaw and set the primary.
-#   5. Configure msmtp for OCI Email Delivery (skipped when email is disabled).
-#   6. Start litellm and openclaw-gateway.
+#   5. Start litellm and openclaw-gateway.
+#   6. Refresh the APT package lists baked into the image.
 #
 # Steps 3 and 4 are both generated from var.models, so the LiteLLM routing table
 # and the OpenClaw model picker cannot disagree about what exists.
@@ -257,99 +257,6 @@ run_openclaw approvals allowlist add --agent 'main' '/**' || true
 
 chown -R openclaw:openclaw /home/openclaw/.openclaw
 echo "NOTE: [models] done"
-
-
-# ==============================================================================
-# Email (OCI Email Delivery — optional)
-# ==============================================================================
-#
-# smtp_host is empty when var.email_sender was left unset in 01-core, in which
-# case the whole block is skipped and the desktop simply has no mail.
-#
-# Note the asymmetry with AWS: the instance principal is NOT granted Email
-# Delivery API permissions, so the agent cannot send through the OCI CLI. msmtp
-# with these SMTP credentials is the only path, which is why SYSTEM.md says so
-# explicitly — an agent that finds `oci email` will otherwise keep trying it.
-#
-# ==============================================================================
-
-SMTP_HOST="${smtp_host}"
-SMTP_USERNAME="${smtp_username}"
-SMTP_PASSWORD="${smtp_password}"
-SMTP_FROM="${smtp_from}"
-
-if [ -n "$${SMTP_HOST}" ]; then
-  echo "NOTE: [email] injecting SMTP credentials into gateway service"
-  mkdir -p /etc/systemd/system/openclaw-gateway.service.d
-  cat > /etc/systemd/system/openclaw-gateway.service.d/smtp.conf <<EOF
-[Service]
-Environment="SMTP_HOST=$${SMTP_HOST}"
-Environment="SMTP_PORT=587"
-Environment="SMTP_USERNAME=$${SMTP_USERNAME}"
-Environment="SMTP_PASSWORD=$${SMTP_PASSWORD}"
-Environment="SMTP_FROM=$${SMTP_FROM}"
-EOF
-  systemctl daemon-reload
-
-  echo "NOTE: [email] configuring msmtp for system-wide email sending"
-  cat > /etc/msmtprc <<EOF
-defaults
-auth           on
-tls            on
-tls_trust_file /etc/ssl/certs/ca-certificates.crt
-logfile        /var/log/msmtp.log
-
-account        oci
-host           $${SMTP_HOST}
-port           587
-from           $${SMTP_FROM}
-user           $${SMTP_USERNAME}
-password       $${SMTP_PASSWORD}
-
-account default : oci
-EOF
-  chmod 600 /etc/msmtprc
-  touch /var/log/msmtp.log
-  chmod 666 /var/log/msmtp.log
-
-  cp /etc/msmtprc /home/openclaw/.msmtprc
-  chown openclaw:openclaw /home/openclaw/.msmtprc
-  chmod 600 /home/openclaw/.msmtprc
-
-  echo "NOTE: [email] writing email capability note to agent workspace"
-  mkdir -p /home/openclaw/.openclaw/agents/main/workspace
-  cat > /home/openclaw/.openclaw/agents/main/workspace/EMAIL.md <<EOF
-# Email Sending
-
-msmtp is configured system-wide with OCI Email Delivery SMTP credentials.
-Use the \`mail\` command via exec to send email — no additional setup needed.
-
-The instance principal does NOT have Email Delivery API permissions, so
-\`oci email\` commands will fail. Always use \`mail\`.
-
-## Send a plain text email
-\`\`\`bash
-echo "Message body here" | mail -s "Subject" recipient@example.com
-\`\`\`
-
-## Send with a file attachment
-\`\`\`bash
-mail -s "Subject" -A /path/to/file.docx recipient@example.com < /dev/null
-\`\`\`
-
-## Send with body and attachment
-\`\`\`bash
-echo "Please find the report attached." | mail -s "Report" -A /path/to/report.docx recipient@example.com
-\`\`\`
-
-From address: $${SMTP_FROM}
-EOF
-  chown -R openclaw:openclaw /home/openclaw/.openclaw/agents/main/workspace
-
-  echo "NOTE: [email] done"
-else
-  echo "NOTE: [email] no sender configured, skipping"
-fi
 
 
 # ==============================================================================

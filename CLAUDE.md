@@ -12,21 +12,21 @@ Port of `aws-openclaw`, completing the set alongside `azure-openclaw`.
 ## Architecture
 
 ```
-01-core/          VCN + subnets + NAT + service user/API key + Email Delivery
+01-core/          VCN + subnets + NAT + service user and API key
 02-packer/        Packer build: Ubuntu 24.04 → openclaw-image
   scripts/        01-packages through 12-onlyoffice
   files/          litellm.service, openclaw-gateway.service, xvfb.service
 03-openclaw/      Compute instance + NSG + dynamic group + policies
   scripts/
     userdata.sh   Boot: set password, write LiteLLM creds + config,
-                  configure msmtp, start systemd services
+                  register models, start systemd services
 genai-config.sh   Single source of truth: the model array, primary, and region
 probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 ```
 
 ### Deployment Order
 
-1. `01-core` — VCN, `openclaw-svc` user + API key, optional Email Delivery
+1. `01-core` — VCN, `openclaw-svc` user + API key
 2. `02-packer` — Packer builds `openclaw-image`
 3. `03-openclaw` — instance from `openclaw-image`, NSG, instance principal
 
@@ -412,7 +412,6 @@ urllib3 without a RECORD file, which blocks pip's resolver system-wide.
    from it could read them
 4. Writes `/opt/openclaw/litellm-config.yaml` — one entry per configured model
 5. Registers those same models with OpenClaw and sets the primary
-6. Configures msmtp if Email Delivery was enabled
 7. Starts `litellm.service` and `openclaw-gateway.service`
 
 ## Agent Runtime Notes
@@ -422,11 +421,6 @@ needs `--auth instance_principal`; without it the CLI fails with
 `ConfigFileNotFound`, which looks like a permissions problem and is not.
 `09-openclaw-init.sh` writes this into the agent's `SYSTEM.md` and `CLAUDE.md`
 so it does not have to rediscover it.
-
-Email goes through `mail`/msmtp only. The instance principal has **no** Email
-Delivery API permission, so `oci email` will fail — `SYSTEM.md` says so
-explicitly, because an agent that finds the command will otherwise keep
-retrying it.
 
 ## Known Gaps
 

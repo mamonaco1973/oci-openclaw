@@ -7,7 +7,7 @@
 #   Deploy the OpenClaw AI agent workstation on OCI.
 #
 # Deployment Flow:
-#   1. Core infrastructure (Terraform)  — VCN, service user, API key, email.
+#   1. Core infrastructure (Terraform)  — VCN, service user, API key.
 #   2. Custom image (Packer)            — Ubuntu 24.04 + desktop + OpenClaw.
 #   3. OpenClaw host (Terraform)        — instance, NSG, instance principal.
 #   4. Post-deploy validation.
@@ -40,9 +40,6 @@ export TF_VAR_region="${OCI_REGION}"
 # shell array crosses into HCL as a real list of objects.
 genai_export_tf_vars
 
-# Optional: register an OCI Email Delivery approved sender so the agent can
-# send mail. Leave unset and email is skipped entirely.
-# export TF_VAR_email_sender="you@example.com"
 
 
 # ==============================================================================

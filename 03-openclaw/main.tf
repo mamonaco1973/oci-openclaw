@@ -62,10 +62,6 @@ locals {
   litellm_fingerprint = data.terraform_remote_state.core.outputs.litellm_fingerprint
   litellm_private_key = data.terraform_remote_state.core.outputs.litellm_private_key
 
-  smtp_host     = data.terraform_remote_state.core.outputs.smtp_host
-  smtp_username = data.terraform_remote_state.core.outputs.smtp_username
-  smtp_password = data.terraform_remote_state.core.outputs.smtp_password
-  smtp_from     = data.terraform_remote_state.core.outputs.smtp_from
 }
 
 # ==============================================================================

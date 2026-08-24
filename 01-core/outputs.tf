@@ -48,31 +48,3 @@ output "litellm_private_key" {
   sensitive   = true
 }
 
-# ==============================================================================
-# SECTION: Email Delivery
-# ------------------------------------------------------------------------------
-# Empty strings when var.email_sender is unset — userdata.sh treats an empty
-# smtp_host as "email not configured" and skips msmtp entirely.
-# ==============================================================================
-
-output "smtp_host" {
-  description = "OCI Email Delivery SMTP endpoint for the deployment region"
-  value       = var.email_sender == "" ? "" : "smtp.email.${var.region}.oci.oraclecloud.com"
-}
-
-output "smtp_username" {
-  description = "SMTP username issued with the credential"
-  value       = var.email_sender == "" ? "" : oci_identity_smtp_credential.openclaw[0].username
-  sensitive   = true
-}
-
-output "smtp_password" {
-  description = "SMTP password — returned by OCI only at creation time"
-  value       = var.email_sender == "" ? "" : oci_identity_smtp_credential.openclaw[0].password
-  sensitive   = true
-}
-
-output "smtp_from" {
-  description = "Approved sender address mail is sent from"
-  value       = var.email_sender
-}

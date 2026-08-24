@@ -107,11 +107,6 @@ resource "oci_core_instance" "openclaw" {
       models        = var.models
       models_b64    = base64encode(jsonencode([for m in var.models : { id = m.alias, name = m.display }]))
       primary_alias = var.primary_alias
-
-      smtp_host     = local.smtp_host
-      smtp_username = local.smtp_username
-      smtp_password = local.smtp_password
-      smtp_from     = local.smtp_from
     }))
   }
 

@@ -29,33 +29,13 @@ This is the Oracle port of [`aws-openclaw`](../../aws-openclaw), alongside
 
 ## Architecture
 
-```
-                        ┌──────────────────────────────┐
-   RDP :3389 ─────────► │  openclaw-host               │
-                        │  Ubuntu 24.04 + LXQt + XRDP  │
-                        │                              │
-                        │   Chrome ──► localhost:18789 │
-                        │                  │           │
-                        │           openclaw-gateway   │
-                        │                  │           │
-                        │           localhost:4000     │
-                        │           LiteLLM proxy      │
-                        └──────────────────┼───────────┘
-                                           │ signed with the
-                                           │ openclaw-svc API key
-                                           ▼
-                            ┌──────────────────────────────┐
-                            │  OCI Generative AI           │
-                            │  us-chicago-1, on demand     │
-                            │  Llama 4 / gpt-oss / Grok    │
-                            └──────────────────────────────┘
-```
+![oci-openclaw](oci-openclaw.png)
 
 The OpenClaw gateway binds **loopback only**. There is no inbound path to port
 18789 — the UI is reachable from inside the RDP session and nowhere else.
 
 ```
-01-core/          VCN + subnets + NAT + service user/API key + Email Delivery
+01-core/          VCN + subnets + NAT + service user and API key
 02-packer/        Packer build: Ubuntu 24.04 → openclaw-image
 03-openclaw/      Compute instance + NSG + dynamic group + policies
 genai-config.sh   Single source of truth for models + region
@@ -118,8 +98,6 @@ cd oci-openclaw
 ## Build the Code
 
 ```bash
-# Optional — register an approved sender so the agent can send email
-export TF_VAR_email_sender="you@example.com"
 
 # Optional — deploy into a specific compartment (defaults to the tenancy root)
 export OCI_COMPARTMENT_ID="ocid1.compartment.oc1..."
@@ -130,7 +108,7 @@ export OCI_COMPARTMENT_ID="ocid1.compartment.oc1..."
 `apply.sh` runs `check_env.sh` first, then:
 
 1. **01-core** — VCN, subnets, gateways, the `openclaw-svc` user and its API
-   key, and optionally Email Delivery
+   key
 2. **02-packer** — builds `openclaw-image` from Canonical Ubuntu 24.04
 3. **03-openclaw** — the instance, its NSG, the dynamic group and policies
 4. **validate.sh** — prints connection details

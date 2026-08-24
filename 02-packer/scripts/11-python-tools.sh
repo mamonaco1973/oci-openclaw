@@ -21,10 +21,7 @@ apt-get install -y \
   ffmpeg \
   ghostscript \
   xmlstarlet \
-  csvkit \
-  msmtp \
-  msmtp-mta \
-  mailutils
+  csvkit
 
 echo "NOTE: [python-tools] installing Python packages system-wide"
 pip3 install --break-system-packages \

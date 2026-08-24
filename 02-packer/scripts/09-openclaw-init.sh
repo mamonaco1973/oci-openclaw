@@ -93,7 +93,6 @@ following capabilities:
 - **Your own compartment/region**: never ask the user for these. Read them from the metadata service: `curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/instance/ | jq -r .compartmentId`
 - **`Missing option(s) --compartment-id`** means the argument was omitted — not a permissions failure and not a hang. Look the value up and retry.
 - **Web**: Apache2 serves /var/www/html (world-writable) at http://localhost/ — write a file there and open it in the browser.
-- **Email**: Send via the `mail` command (msmtp + OCI Email Delivery): `echo "body" | mail -s "Subject" recipient@example.com`
 - **Cost**: Use `oci --auth instance_principal usage-api usage-summary request-summarized-usages`.
 
 Read SYSTEM.md in this workspace for the full list of installed tools and capabilities.
@@ -111,14 +110,6 @@ Every OCI CLI command must therefore pass the auth mode explicitly:
 Without that flag the CLI looks for ~/.oci/config and fails with a
 ConfigFileNotFound error. That failure is not a permissions problem — it means
 the flag was omitted.
-
-To send email, use the mail command via exec — msmtp is configured with OCI
-Email Delivery SMTP credentials:
-
-  echo "Message body" | mail -s "Subject" recipient@example.com
-
-The from address is in /etc/msmtprc. Read it with:
-  grep '^from' /etc/msmtprc
 
 Never tell the user to do something manually that you can do yourself via exec.
 CLAUDEMD
@@ -197,21 +188,8 @@ It is then served at http://localhost/ — open that with the browser tool to
 show the user the result. Port 80 is not reachable from outside the instance,
 so this is for showing things on the desktop, not for publishing to the web.
 
-## Email
-msmtp is configured system-wide with OCI Email Delivery SMTP credentials.
-Use the `mail` command — no additional setup needed.
-
-**Important:** The instance principal does NOT carry Email Delivery API
-permissions. Do not try to send through the OCI SDK or CLI; always use the
-`mail` command, which uses the pre-configured SMTP credentials.
-
-```bash
-# Plain text
-echo "Body here" | mail -s "Subject" recipient@example.com
-
-# With attachment
-echo "See attached." | mail -s "Subject" -A /path/to/file.docx recipient@example.com
-```
+Anything self-contained works: a single HTML file, or HTML plus CSS and
+JavaScript. Write the files, then open the page to demonstrate it.
 
 ## Document Processing
 - **python-docx** — read/write Word documents
@@ -267,8 +245,8 @@ if [ -f "${BOOTSTRAP}" ]; then
 ## This System
 
 Before you delete this file, read `SYSTEM.md` in this workspace — it lists the
-tools, commands, and capabilities available on this machine (email, document
-processing, the OCI CLI and its required --auth flag, etc.). Keep that file
+tools, commands, and capabilities available on this machine (web publishing,
+document processing, the OCI CLI and its required --auth flag, etc.). Keep it
 around after onboarding.
 BOOTNOTE
 fi

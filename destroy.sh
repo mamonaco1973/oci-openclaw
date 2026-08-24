@@ -42,10 +42,6 @@ export TF_VAR_region="${OCI_REGION}"
 # shell array crosses into HCL as a real list of objects.
 genai_export_tf_vars
 
-# Must match whatever apply.sh used, or 01-core will plan to create the email
-# resources it is being asked to destroy.
-export TF_VAR_email_sender="${TF_VAR_email_sender:-}"
-
 TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
 export TF_VAR_tenancy_ocid="${TENANCY_OCID}"
 
