@@ -41,7 +41,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 | LiteLLM port | `4000` |
 | LiteLLM master key | `sk-openclaw` |
 | OpenClaw gateway port | `18789` (loopback only) |
-| Primary model | `meta.llama-4-maverick-17b-128e-instruct-fp8` |
+| Primary model | `openai.gpt-oss-120b` |
 | Linux user | `openclaw` (sudo, NOPASSWD) |
 | Password source | Terraform state → `./get_password.sh` |
 
@@ -58,7 +58,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 
 ---
 
-## THE ELEVEN THINGS THAT WILL BITE YOU
+## THE TWELVE THINGS THAT WILL BITE YOU
 
 These are the differences that actually cost time. Everything else ported
 mechanically from `aws-openclaw`.
@@ -280,6 +280,36 @@ stale proxy happens to serve the right names. Splitting those two apart is
 what exposed it here. The placeholder model is now named
 `PLACEHOLDER-STALE-PROXY-RESTART-LITELLM` so a stale proxy names its own
 diagnosis in the model picker.
+
+### 12. The gateway caches an EMPTY model list if litellm is not ready
+
+**This was the real root cause of the model picker being empty**, and it cost
+four wrong diagnoses. Read this before touching anything model-related.
+
+`openclaw-gateway.service` has `After=litellm.service`, but systemd `After=`
+only orders the **start** of the two units — it does not wait for litellm to
+be READY. LiteLLM needs 10-15s to bind :4000. The gateway starts immediately
+behind it, probes `/v1/models`, gets nothing, and **caches an empty model
+list. It never re-probes.**
+
+That explains every confusing symptom in this project's history:
+
+- Restarting both services by hand always worked — litellm was warm by then.
+- Doing the same thing from cloud-init never worked — too early.
+- Running `openclaw config get` from a shell fixed it, because invoking the
+  CLI pokes the gateway into re-reading the provider. A read command
+  appearing to fix a config problem is the tell.
+
+The fix is an `ExecStartPre` in the unit that polls `/v1/models` until it
+answers, so the ordering is enforced by systemd on **every** boot and reboot
+rather than by cloud-init, which runs once. It gives up after 90s and starts
+anyway: a gateway with an empty picker is debuggable, one that never starts
+is not.
+
+Do not try to solve this from cloud-init. That was attempted three times —
+restart instead of start, a readiness poll before restarting the gateway,
+and baking the config into the image. The first two failed because the
+gateway had already cached empty before cloud-init ran at all.
 
 ---
 

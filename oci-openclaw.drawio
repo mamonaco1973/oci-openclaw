@@ -37,7 +37,7 @@
           <mxGeometry height="250" width="420" x="900" y="280" as="geometry" />
         </mxCell>
 
-        <mxCell id="maverick-box" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;fontColor=#000000;strokeColor=#BD7000;fontSize=11;arcSize=20;" value="&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;b&gt;Llama 4 Maverick&lt;/b&gt;&lt;br&gt;&lt;i&gt;primary · tool calling&lt;/i&gt;&lt;/font&gt;">
+        <mxCell id="maverick-box" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;fontColor=#000000;strokeColor=#BD7000;fontSize=11;arcSize=20;" value="&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;b&gt;Llama 4 Maverick&lt;/b&gt;&lt;br&gt;&lt;i&gt;narrates tool calls&lt;/i&gt;&lt;/font&gt;">
           <mxGeometry height="60" width="185" x="920" y="340" as="geometry" />
         </mxCell>
 
@@ -45,7 +45,7 @@
           <mxGeometry height="60" width="185" x="1120" y="340" as="geometry" />
         </mxCell>
 
-        <mxCell id="gptoss-box" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;fontColor=#000000;strokeColor=#BD7000;fontSize=11;arcSize=20;" value="&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;b&gt;GPT-OSS 120B&lt;/b&gt;&lt;br&gt;&lt;i&gt;open weight · chat&lt;/i&gt;&lt;/font&gt;">
+        <mxCell id="gptoss-box" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;fontColor=#000000;strokeColor=#BD7000;fontSize=11;arcSize=20;" value="&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;b&gt;GPT-OSS 120B&lt;/b&gt;&lt;br&gt;&lt;i&gt;primary · drives Exec&lt;/i&gt;&lt;/font&gt;">
           <mxGeometry height="60" width="185" x="920" y="415" as="geometry" />
         </mxCell>
 

@@ -26,6 +26,7 @@
 #      key to /etc/litellm-key.pem.
 #   3. Configure msmtp for OCI Email Delivery (skipped when email is disabled).
 #   4. Restart litellm so it picks the credentials up.
+#   5. Refresh the APT package lists baked into the image.
 #
 # It does NOT configure models. Both the LiteLLM model_list and the OpenClaw
 # provider registration are baked into the image by
@@ -251,6 +252,36 @@ echo "NOTE: [services] restarting litellm to pick up the OCI credentials"
 systemctl restart litellm
 
 echo "NOTE: [services] done"
+
+
+# ==============================================================================
+# Refresh APT Package Lists
+# ==============================================================================
+#
+# The image bakes /var/lib/apt/lists from whenever Packer ran, and
+# 01-packages.sh deliberately disables apt-daily so nothing ever refreshes it.
+# Ubuntu rotates point versions constantly, so within days an `apt install` on
+# a deployed instance fails with dependencies "not installable" — the package
+# is real, the baked index just does not know its current version:
+#
+#     apache2-bin : Depends: libaprutil1t64 (>= 1.6.0) but it is not installable
+#
+# That reads like a broken image rather than a stale index, which is why it is
+# refreshed here. The timers stay disabled on purpose — unattended-upgrades
+# restarting things mid-demo is worse than a slightly old index.
+#
+# Deliberately last, and deliberately non-fatal: it runs after the password is
+# set and the services are up, so a transient mirror failure cannot leave an
+# instance nobody can log into.
+#
+# ==============================================================================
+
+echo "NOTE: [apt] refreshing package lists"
+if apt-get update -y > /dev/null 2>&1; then
+  echo "NOTE: [apt] package lists refreshed"
+else
+  echo "WARN: [apt] refresh failed — run 'sudo apt-get update' before installing"
+fi
 
 
 # ==============================================================================

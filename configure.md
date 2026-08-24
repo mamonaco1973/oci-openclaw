@@ -77,7 +77,7 @@ in, so copy it from there rather than editing the alias below by hand:
 curl -s http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer sk-openclaw" \
   -H "Content-Type: application/json" \
-  -d '{"model":"llama-maverick",
+  -d '{"model":"gpt-oss-120b",
        "messages":[{"role":"user","content":"What is the weather in Chicago?"}],
        "tools":[{"type":"function","function":{"name":"get_weather",
          "parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]}' | jq .

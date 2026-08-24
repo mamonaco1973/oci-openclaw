@@ -63,7 +63,7 @@ variable "models_b64" {
 
 variable "primary_alias" {
   description = "Alias agents default to"
-  default     = "llama-maverick"
+  default     = "gpt-oss-120b"
 }
 
 variable "shape" {

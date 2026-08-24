@@ -11,13 +11,47 @@ Group=openclaw
 Environment="HOME=/home/openclaw"
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 Environment="DISPLAY=:99"
+
+# WAIT FOR LITELLM TO ACTUALLY SERVE MODELS BEFORE STARTING.
+#
+# After=litellm.service only orders the START of the two units — it does not
+# wait for litellm to be READY. LiteLLM needs 10-15s to bind :4000, so the
+# gateway would otherwise start immediately behind it, probe /v1/models, get
+# nothing, and cache an EMPTY MODEL LIST. It never re-probes, so the picker
+# stays empty until something pokes it — a gateway restart, or even an
+# `openclaw config get` from the shell.
+#
+# That is why this looked so erratic: every "fix" that appeared to work was
+# really just something poking the gateway after litellm had warmed up, and
+# doing the same thing from cloud-init at boot was too early to help.
+#
+# Polls for up to 90s, then starts anyway rather than blocking the boot — a
+# gateway with an empty picker is still reachable and debuggable; one that
+# never starts is not.
+ExecStartPre=/bin/bash -c 'for _ in $(seq 1 45); do curl -fsS -m 2 -o /dev/null http://localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw" && exit 0; sleep 2; done; echo "WARN: litellm not ready after 90s; model picker may be empty"; exit 0'
+
 ExecStart=/usr/local/bin/openclaw gateway run \
   --bind loopback \
   --port 18789 \
   --auth none
 ExecStartPost=/bin/bash -c 'sleep 3 && /usr/local/bin/openclaw approvals allowlist add --agent "*" "/**" && /usr/local/bin/openclaw approvals allowlist add --agent "main" "/**"'
-Restart=on-failure
-RestartSec=10
+# MUST be always, not on-failure.
+#
+# OpenClaw restarts itself for config changes it cannot apply in place — most
+# commonly gateway.auth.token, which the browser service generates on first use
+# and which then "requires gateway restart". It signals SIGUSR1, shuts down
+# cleanly, and expects its supervisor to bring it back:
+#
+#   [reload] config change requires gateway restart (gateway.auth.token)
+#   [gateway] restart mode: full process restart (supervisor restart)
+#   openclaw-gateway.service: Deactivated successfully.
+#
+# That is exit status 0, so Restart=on-failure does NOT restart it and the
+# gateway stays down permanently. The symptom is the UI working fine and then
+# dying the first time the agent touches the browser — nothing in the log looks
+# like an error, because nothing errored.
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

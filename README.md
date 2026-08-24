@@ -74,7 +74,7 @@ probe_genai.py    Proves a model actually answers on demand
 | Boot volume | 128 GB |
 | LiteLLM | port `4000`, master key `sk-openclaw` |
 | OpenClaw gateway | port `18789`, loopback only |
-| Primary model | `meta.llama-4-maverick-17b-128e-instruct-fp8` |
+| Primary model | `openai.gpt-oss-120b` |
 | Linux user | `openclaw` (sudo, NOPASSWD) |
 
 An OCI OCPU is a full physical core — two vCPUs — so 4 OCPUs is 8 vCPUs,
@@ -171,7 +171,7 @@ GENAI_MODELS=(
   "grok-4|xai.grok-4.20-non-reasoning|Grok 4 (OCI)"
 )
 
-GENAI_PRIMARY="llama-maverick"   # agents default to this; must be tool-calling
+GENAI_PRIMARY="gpt-oss-120b"     # agents default to this
 ```
 
 `check_env.sh` probes every entry before anything is built, `userdata.sh`
@@ -181,25 +181,35 @@ list above is just the default — the four models it ships with:
 
 | Name in OpenClaw | OCI model | Role |
 |---|---|---|
-| `llama-maverick` | `meta.llama-4-maverick-17b-128e-instruct-fp8` | primary, tool-calling |
+| `gpt-oss-120b` | `openai.gpt-oss-120b` | **primary** — fastest, and the one observed driving Exec |
 | `llama-scout` | `meta.llama-4-scout-17b-16e-instruct` | lower latency |
-| `gpt-oss-120b` | `openai.gpt-oss-120b` | open-weight chat fallback |
+| `llama-maverick` | `meta.llama-4-maverick-17b-128e-instruct-fp8` | returns tool_calls to curl, but narrates them in OpenClaw |
 | `grok-4` | `xai.grok-4.20-non-reasoning` | alternate vendor |
 
-**Why the primary is not the fastest model.** `openai.gpt-oss-120b` measures
-faster (0.10s vs 0.12s) and is what `oci-resume-app` runs — but that project
-only needs single-shot completions. OpenClaw is an agentic coder and is useless
-without tool calling; community LiteLLM configs for OCI gpt-oss explicitly set
-`supports_function_calling=false`. Llama 4 Maverick is natively tool-calling,
-nearly as fast, and open-weight, so it carries the same "no upstream vendor
-retirement schedule" argument.
+**Why gpt-oss-120b is primary.** It is the fastest of the four *and* the one
+observed actually driving OpenClaw's Exec tool end to end.
+
+Maverick was primary first, on the strength of community LiteLLM configs that
+set `supports_function_calling=false` for OCI gpt-oss. That claim is wrong on
+this stack, and testing showed the opposite of what was assumed:
+
+- **gpt-oss-120b** emitted a real tool call in OpenClaw — the UI rendered a
+  Tool block and the command ran.
+- **llama-maverick** returned a populated `tool_calls` array to a raw curl, but
+  inside OpenClaw it *narrated* the call instead, printing literal text like
+  `[exec command="..."]` into the reply. Nothing ran.
+
+Raw tool-calling capability and reliable tool *use* under a full agent system
+prompt are different properties. Only the second one matters here, and passing
+the curl does not predict it.
 
 ### "Works" has three levels, and they are not the same
 
 1. **Listed** — `list-models` returns it. Proves nothing.
 2. **Answers** — a real chat call succeeds. `check_env.sh` checks this.
-3. **Emits tool calls** — nothing offline proves this. `validate.sh` prints the
-   curl that settles it. **Run it.**
+3. **Emits tool calls** — the curl in configure.md proves this.
+4. **Actually uses them under an agent prompt** — only a real request in the UI
+   proves this. Maverick passes level 3 and fails level 4.
 
 ---
 

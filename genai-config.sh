@@ -61,18 +61,28 @@
 #     0.38s  xai.grok-4.20-non-reasoning
 #     0.57s  google.gemini-2.5-flash
 #
-# Maverick is primary because its tool calling is VERIFIED: it returned a
-# populated tool_calls array through LiteLLM on 2026-08-23. It is nearly as
-# fast as gpt-oss and open-weight, so it carries the same "no upstream vendor
-# retirement schedule" argument -- unlike Gemini 2.5 (being retired on GCP) or
-# the Grok line (ten variants retired on a single day, 2026-08-15).
+# gpt-oss-120b is primary. It is the fastest of the four AND the one observed
+# actually driving OpenClaw's Exec tool end to end on a live box.
 #
-# DO NOT assume gpt-oss-120b cannot call tools. Community LiteLLM configs for
-# OCI gpt-oss set supports_function_calling=false, and that was repeated here
-# as fact -- but it was never tested, and observed behaviour contradicts it:
-# gpt-oss-120b drove OpenClaw's Exec tool correctly. Treat the ordering below
-# as preference, not capability, until the per-model tool-calling test has
-# actually been run against each one.
+# THIS REVERSES AN EARLIER DECISION -- read before changing it back.
+#
+# Maverick was originally primary, justified by community LiteLLM configs that
+# set supports_function_calling=false for OCI gpt-oss. That claim was never
+# tested and is wrong on this stack. What was actually observed, 2026-08-23:
+#
+#   gpt-oss-120b   emitted a real tool call in OpenClaw -- the UI rendered a
+#                  Tool block and the command ran.
+#   llama-maverick returned a populated tool_calls array to a raw curl, but in
+#                  OpenClaw it NARRATED the call instead, printing literal
+#                  text like [exec command="..."] into the reply. Nothing ran.
+#
+# So raw tool-calling capability and reliable tool USE under OpenClaw's full
+# system prompt are different properties, and only the second one matters here.
+# Maverick has the first and not the second.
+#
+# Test both properties before promoting any model: the curl in configure.md
+# proves capability, and an actual "create a file and read it back" request in
+# the UI proves use. A model that passes the curl can still narrate.
 #
 # VERIFY TOOL CALLING BEFORE TRUSTING A SWAP. check_env.sh probes every model
 # here, but that only proves it answers a plain chat call -- being listed proves
@@ -94,7 +104,7 @@ GENAI_MODELS=(
 
 # Alias agents default to. Must be one of the aliases above, and should be a
 # tool-calling model.
-GENAI_PRIMARY="llama-maverick"
+GENAI_PRIMARY="gpt-oss-120b"
 
 # Region that actually serves the models above.
 export OCI_REGION="${OCI_REGION:-us-chicago-1}"
