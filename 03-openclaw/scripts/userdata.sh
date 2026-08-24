@@ -432,4 +432,7 @@ sleep 60
 systemctl start openclaw-gateway
 systemctl start xrdp
 
+curl -s localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw" | jq -r '.data[].id'
+
 echo "NOTE: user-data complete: $(date -Is)"
+
