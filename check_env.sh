@@ -24,9 +24,7 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 echo "NOTE: Validating required commands in PATH."
 
-# curl is used by validate.sh to probe the instance ports while it waits for
-# the deploy to come up.
-commands=("oci" "terraform" "jq" "packer" "curl")
+commands=("oci" "terraform" "jq" "packer")
 
 for cmd in "${commands[@]}"; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
