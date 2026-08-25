@@ -11,35 +11,7 @@ Group=openclaw
 Environment="HOME=/home/openclaw"
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 Environment="DISPLAY=:99"
-
-# WAIT FOR LITELLM TO SERVE THE **REAL** MODEL LIST BEFORE STARTING.
-#
-# Two separate problems, and the second one is subtle enough that it survived
-# several rounds of "fixed".
-#
-# 1. After=litellm.service only orders the START of the two units; it does not
-#    wait for litellm to be READY. LiteLLM needs 10-15s to bind :4000, so the
-#    gateway starts behind it, probes /v1/models, gets nothing, and caches an
-#    EMPTY model list. It never re-probes.
-#
-# 2. On FIRST BOOT litellm comes up against the PLACEHOLDER config baked into
-#    the image, so /v1/models answers almost immediately — with the wrong
-#    models. A gate that only checks "does the endpoint respond" passes here,
-#    and the gateway caches the placeholder. cloud-init then rewrites the
-#    config and restarts litellm, but the gateway has already made up its mind.
-#
-# Hence the long-running symptom: the picker is wrong until someone runs
-# `systemctl restart openclaw-gateway` by hand, because that is the first time
-# the gateway looks at a warm litellm holding the real list. A reboot does not
-# help, because a reboot reproduces exactly the same ordering.
-#
-# So the gate waits for a response that does NOT contain PLACEHOLDER — that is
-# the signal cloud-init has replaced the config and restarted the proxy.
-#
-# Up to 180s, then starts anyway rather than blocking the boot: a gateway with
-# a wrong picker is reachable and debuggable, one that never starts is not.
-ExecStartPre=/bin/bash -c 'for _ in $(seq 1 90); do M=$(curl -fsS -m 2 http://localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw" 2>/dev/null); if [ -n "$M" ] && ! printf %s "$M" | grep -q PLACEHOLDER; then echo "litellm serving real models; starting gateway"; exit 0; fi; sleep 2; done; echo "WARN: litellm never served a real model list; picker may be wrong"; exit 0'
-
+
 ExecStart=/usr/local/bin/openclaw gateway run \
   --bind loopback \
   --port 18789 \

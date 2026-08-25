@@ -276,40 +276,45 @@ because every step did.
 
 `aws-openclaw` has the identical race and never trips it: its build-time
 placeholder lists the same four Bedrock models as the runtime config, so a
-stale proxy happens to serve the right names. Splitting those two apart is
-what exposed it here. The placeholder model is now named
-`PLACEHOLDER-STALE-PROXY-RESTART-LITELLM` so a stale proxy names its own
-diagnosis in the model picker.
+stale proxy happens to serve the right names anyway.
 
-### 12. The gateway caches an EMPTY model list if litellm is not ready
+Caveat on this entry: `start` really is a no-op on a running unit and
+`restart` is correct, but this was NOT what caused the model-picker symptom it
+was originally written to explain. That was the browser — see #12.
 
-**This was the real root cause of the model picker being empty**, and it cost
-four wrong diagnoses. Read this before touching anything model-related.
+### 12. The model picker is the BROWSER, and it caches hard
 
-`openclaw-gateway.service` has `After=litellm.service`, but systemd `After=`
-only orders the **start** of the two units — it does not wait for litellm to
-be READY. LiteLLM needs 10-15s to bind :4000. The gateway starts immediately
-behind it, probes `/v1/models`, gets nothing, and **caches an empty model
-list. It never re-probes.**
+If the picker shows the wrong models or none at all, **hard-reload the page
+before touching anything on the box**: Ctrl+Shift+R on http://localhost:18789,
+or close the tab and open a fresh one.
 
-That explains every confusing symptom in this project's history:
+This cost most of a day. The symptom looks exactly like a backend fault, and
+two things appear to "fix" it in a way that seems to confirm that:
 
-- Restarting both services by hand always worked — litellm was warm by then.
-- Doing the same thing from cloud-init never worked — too early.
-- Running `openclaw config get` from a shell fixed it, because invoking the
-  CLI pokes the gateway into re-reading the provider. A read command
-  appearing to fix a config problem is the tell.
+- `systemctl restart openclaw-gateway` — drops the websocket, so the page
+  reconnects and re-fetches.
+- `openclaw config get ...` — a READ-ONLY command that also nudges the page.
 
-The fix is an `ExecStartPre` in the unit that polls `/v1/models` until it
-answers, so the ordering is enforced by systemd on **every** boot and reboot
-rather than by cloud-init, which runs once. It gives up after 90s and starts
-anyway: a gateway with an empty picker is debuggable, one that never starts
-is not.
+Both are side effects of forcing the UI to reload. The gateway and LiteLLM
+were correct the whole time. Verify that first — it takes seconds:
 
-Do not try to solve this from cloud-init. That was attempted three times —
-restart instead of start, a readiness poll before restarting the gateway,
-and baking the config into the image. The first two failed because the
-gateway had already cached empty before cloud-init ran at all.
+```bash
+curl -s localhost:4000/v1/models -H "Authorization: Bearer sk-openclaw" | jq -r '.data[].id'
+sudo -u openclaw env HOME=/home/openclaw openclaw config get models.providers.litellm
+```
+
+If those two agree with each other and the picker disagrees with both, it is
+the browser.
+
+**A read-only command appearing to fix a config problem is the tell.** When
+that happens, chase the client, not the server.
+
+Wrong fixes attempted before finding this, all now reverted: `restart` instead
+of `start` in cloud-init, a `/v1/models` readiness poll before restarting the
+gateway, an `ExecStartPre` gate on the unit, baking the model config into the
+image, and a systemd oneshot that unconditionally restarted the gateway 90
+seconds after boot. None of them worked, because none of them touched the
+browser.
 
 ---
 
