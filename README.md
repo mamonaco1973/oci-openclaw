@@ -134,6 +134,123 @@ before trusting the deploy, is in [configure.md](configure.md).
 
 ---
 
+## Example Prompts
+
+Apache serves `/var/www/html` at `http://localhost/`, and the directory is
+world-writable, so the agent can publish a page with the exec tool and open it
+in Chrome without leaving the desktop. Nothing is exposed outside the instance.
+
+**Be specific.** These are open-weight models, and a bare *"build breakout"*
+produces something threadbare. The prompts below spell out the tool, the path,
+the permission, and every feature — each line kills a specific failure mode:
+
+- **Naming `/var/www/html` and its permissions** stops it asking you to create
+  the file.
+- **"Do not print the code in chat"** pushes it toward an actual tool call.
+  Left out, some models narrate `[exec command="..."]` as text and nothing runs.
+- **Enumerating features** does the design work. Left open, you get a paddle
+  and a ball and no lives, win state, or restart.
+- **The closing `curl` check** makes the agent prove the page really serves
+  rather than claiming success.
+
+### Breakout
+
+```
+Build a complete Breakout game as a single self-contained HTML file.
+
+You have full write permission to /var/www/html — it is world-writable and
+served by Apache at http://localhost/. Use the exec tool to write the file
+directly. Do not ask me for permission and do not print the code in chat.
+
+Write it to: /var/www/html/breakout.html
+
+Requirements:
+- One file only. Inline CSS and inline JavaScript. No external libraries,
+  no CDN links, no separate .js or .css files.
+- 800x600 <canvas>, centred on a dark page background.
+- Paddle at the bottom, controlled by BOTH the mouse and the left/right
+  arrow keys. Clamp it to the canvas edges.
+- A ball that bounces off the walls, the paddle, and the bricks. Angle the
+  bounce based on where the ball hits the paddle.
+- 5 rows x 10 columns of bricks, a different colour per row.
+- Score (+10 per brick) and 3 lives, both drawn on the canvas.
+- Losing the ball costs a life and resets the ball on the paddle.
+- "YOU WIN" when every brick is cleared, "GAME OVER" at zero lives, and in
+  both cases press SPACE to restart.
+- Use requestAnimationFrame for the game loop.
+
+When the file is written, verify it with exec:
+  ls -l /var/www/html/breakout.html
+  curl -s -o /dev/null -w "%{http_code}" http://localhost/breakout.html
+
+Then tell me the URL to open. Do not stop until the file exists and the
+curl returns 200.
+```
+
+### Tetris
+
+```
+Build a complete Tetris game as a single self-contained HTML file.
+
+You have full write permission to /var/www/html — it is world-writable and
+served by Apache at http://localhost/. Use the exec tool to write the file
+directly. Do not ask me for permission and do not print the code in chat.
+
+Write it to: /var/www/html/tetris.html
+
+Requirements:
+- One file only. Inline CSS and inline JavaScript. No external libraries,
+  no CDN links, no separate .js or .css files.
+- A 10-wide by 20-tall playfield drawn on a <canvas>, centred on a dark page
+  background, with a visible grid.
+- All 7 tetrominoes (I, O, T, S, Z, J, L) in the standard colours: cyan,
+  yellow, purple, green, red, blue, orange.
+- Controls: left/right arrows move, up arrow rotates clockwise, down arrow
+  soft-drops, SPACE hard-drops. Block any move or rotation that would leave
+  the playfield or overlap a locked block.
+- Pieces lock when they cannot fall further, then a new piece spawns at the
+  top from a random bag of the 7.
+- Clear full lines, shift everything above down, and score 100/300/500/800
+  for 1/2/3/4 lines at once.
+- Show score, level, and lines cleared beside the board, plus a "next piece"
+  preview. Level rises every 10 lines and the drop speed increases with it.
+- "GAME OVER" when a new piece cannot spawn, with SPACE to restart.
+
+When the file is written, verify it with exec:
+  ls -l /var/www/html/tetris.html
+  curl -s -o /dev/null -w "%{http_code}" http://localhost/tetris.html
+
+Then tell me the URL to open. Do not stop until the file exists and the
+curl returns 200.
+```
+
+### What these models can and cannot do
+
+Measured on `gpt-oss-120b` through this stack:
+
+| Game | Result |
+|---|---|
+| Breakout | one shot |
+| Tetris | one shot |
+| Missile Command | ran, but unplayable until pacing was given explicit numbers |
+| Pac-Man | did not come together, even over several rounds |
+
+The boundary is not difficulty so much as how many systems have to be held at
+once. Breakout and Tetris are bounded state machines. Pac-Man needs a maze
+representation, grid-aligned movement, and ghost behaviour working together,
+and that is where these models come apart.
+
+Two things that help when a game is close but wrong:
+
+- **Quantify anything the player feels as pacing.** "Slightly faster" gets you
+  a missile crossing the screen in one second. Say "about 10 seconds from top
+  to target, roughly 1/600 of the distance per frame at 60fps."
+- **Iterate on the one broken behaviour**, not the whole file. *"Rotation lets
+  pieces overlap the right wall, fix the collision check"* works far better
+  than asking for a rewrite.
+
+---
+
 ## Model Selection
 
 Everything lives in [`genai-config.sh`](genai-config.sh). Models are declared
