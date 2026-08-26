@@ -94,60 +94,11 @@ wait_for_port() {
   return 1
 }
 
-# ==============================================================================
-# Wait for the deploy to actually FINISH, not just to answer on a port
-# ==============================================================================
-#
-# xrdp comes up minutes before cloud-init finishes. Printing the connection
-# details when 3389 answers invites you to log in and open the OpenClaw UI
-# while userdata is still writing the LiteLLM config and registering models.
-#
-# That matters more than it sounds, because the OpenClaw web UI fetches its
-# model list ONCE when the page loads and never re-fetches. Open it early and
-# the picker holds an empty or partial list for the life of that page — the
-# only cure is a manual reload, which looks exactly like a backend bug and is
-# not one. Getting this wrong cost most of a day.
-#
-# So: wait for the ports, then wait for cloud-init to report done, then confirm
-# the proxy is actually serving the models. Only then print.
-#
-# ==============================================================================
-
-SSH_KEY="${SCRIPT_DIR}/03-openclaw/keys/openclaw_ssh.pem"
-SSH_OPTS=(-i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
-          -o LogLevel=ERROR -o ConnectTimeout=10)
-
 if [ "${PUBLIC_IP}" != "<not found>" ]; then
   echo ""
   echo "NOTE: Waiting for ${PUBLIC_IP} to finish booting..."
   wait_for_port "${PUBLIC_IP}" 22   "SSH (22)"   || true
   wait_for_port "${PUBLIC_IP}" 3389 "RDP (3389)" || true
-
-  if [ -f "${SSH_KEY}" ]; then
-    # cloud-init status --wait blocks until user_data has finished, which is
-    # the definitive "this instance is done" signal.
-    echo "NOTE: Waiting for cloud-init to finish..."
-    ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" \
-      'sudo cloud-init status --wait >/dev/null 2>&1' 2>/dev/null \
-      && echo "NOTE: Cloud-init complete." \
-      || echo "WARN: Could not confirm cloud-init completion."
-
-    # Belt and braces: the proxy must be serving the primary before the UI is
-    # worth opening.
-    echo "NOTE: Waiting for LiteLLM to serve ${GENAI_PRIMARY}..."
-    if ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" \
-         "for i in \$(seq 1 60); do
-            curl -fsS -m 3 localhost:4000/v1/models \
-              -H 'Authorization: Bearer sk-openclaw' 2>/dev/null \
-              | grep -q '${GENAI_PRIMARY}' && exit 0
-            sleep 5
-          done; exit 1" 2>/dev/null; then
-      echo "NOTE: Models are being served."
-    else
-      echo "WARN: ${GENAI_PRIMARY} not served yet — if the OpenClaw model"
-      echo "WARN: picker looks wrong, reload the page (Ctrl+Shift+R)."
-    fi
-  fi
 fi
 
 echo ""
