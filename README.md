@@ -120,7 +120,6 @@ The Packer build is the long pole, at roughly 20–25 minutes.
 ## Connecting
 
 ```bash
-./connect.sh        # RDP details; launches mstsc on Windows
 ./get_password.sh   # username and password
 ```
 

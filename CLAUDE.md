@@ -52,7 +52,6 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 ./apply.sh          # 01-core → 02-packer → 03-openclaw → validate
 ./validate.sh       # connection summary + the tool-calling check
 ./get_password.sh   # openclaw desktop password
-./connect.sh        # RDP details (launches mstsc on Windows)
 ./destroy.sh        # 03-openclaw → delete images → 01-core
 ```
 
