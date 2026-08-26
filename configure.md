@@ -28,8 +28,9 @@ cd 03-openclaw && terraform output -raw public_ip
 
 The host sits in a public subnet with inbound 3389, which is what the AWS build
 does in practice too. OCI's managed Bastion is the SSM Session Manager
-equivalent, but it only forwards to instances in a **private** subnet — see the
-note in `connect.sh` for how to move to that topology.
+equivalent, but it only forwards to instances in a **private** subnet, and this
+host deliberately sits in a public one so the desktop is reachable without a
+tunnel.
 
 ---
 
