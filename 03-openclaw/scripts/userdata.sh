@@ -335,7 +335,6 @@ echo "NOTE: [firewall] persisting iptables rules across reboots"
 netfilter-persistent save
 echo "NOTE: [firewall] persisted"
 
-sleep 60
 systemctl start openclaw-gateway
 systemctl start xrdp
 
