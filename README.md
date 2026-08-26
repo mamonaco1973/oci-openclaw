@@ -35,7 +35,7 @@ The OpenClaw gateway binds **loopback only**. There is no inbound path to port
 18789 — the UI is reachable from inside the RDP session and nowhere else.
 
 ```
-01-core/          VCN + subnets + NAT + service user and API key
+01-core/          VCN + one public subnet + service user and API key
 02-packer/        Packer build: Ubuntu 24.04 → openclaw-image
 03-openclaw/      Compute instance + NSG + dynamic group + policies
 genai-config.sh   Single source of truth for models + region
@@ -49,7 +49,7 @@ probe_genai.py    Proves a model actually answers on demand
 | Resource | Value |
 |---|---|
 | Region | `us-chicago-1` |
-| VCN / CIDR | `clawd-vcn` / `10.0.0.0/23` |
+| VCN / CIDR | `clawd-vcn` / `10.0.0.0/24` |
 | Instance | `openclaw-host`, `VM.Standard.E4.Flex`, 4 OCPU / 16 GB |
 | Boot volume | 128 GB |
 | LiteLLM | port `4000`, master key `sk-openclaw` |
@@ -107,8 +107,8 @@ export OCI_COMPARTMENT_ID="ocid1.compartment.oc1..."
 
 `apply.sh` runs `check_env.sh` first, then:
 
-1. **01-core** — VCN, subnets, gateways, the `openclaw-svc` user and its API
-   key
+1. **01-core** — VCN, one public subnet, internet gateway, the `openclaw-svc`
+   user and its API key
 2. **02-packer** — builds `openclaw-image` from Canonical Ubuntu 24.04
 3. **03-openclaw** — the instance, its NSG, the dynamic group and policies
 4. **validate.sh** — prints connection details

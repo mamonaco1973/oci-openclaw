@@ -12,7 +12,7 @@ Port of `aws-openclaw`, completing the set alongside `azure-openclaw`.
 ## Architecture
 
 ```
-01-core/          VCN + subnets + NAT + service user and API key
+01-core/          VCN + one public subnet + service user and API key
 02-packer/        Packer build: Ubuntu 24.04 → openclaw-image
   scripts/        01-packages through 12-onlyoffice
   files/          litellm.service, openclaw-gateway.service, xvfb.service
@@ -35,7 +35,7 @@ probe_genai.py    Proves a model actually answers (copied from oci-resume-app)
 | Resource | Value |
 |---|---|
 | Region | `us-chicago-1` (see genai-config.sh) |
-| VCN / CIDR | `clawd-vcn` / `10.0.0.0/23` |
+| VCN / CIDR | `clawd-vcn` / `10.0.0.0/24` |
 | Instance display name | `openclaw-host` |
 | Shape | `VM.Standard.E4.Flex`, 4 OCPU / 16 GB |
 | LiteLLM port | `4000` |

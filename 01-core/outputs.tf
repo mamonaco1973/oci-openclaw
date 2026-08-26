@@ -20,11 +20,6 @@ output "pub_subnet_1_ocid" {
   value       = oci_core_subnet.pub_subnet_1.id
 }
 
-output "vm_subnet_1_ocid" {
-  description = "Private workload subnet (NAT egress)"
-  value       = oci_core_subnet.vm_subnet_1.id
-}
-
 # ==============================================================================
 # SECTION: LiteLLM Service Credentials
 # ------------------------------------------------------------------------------

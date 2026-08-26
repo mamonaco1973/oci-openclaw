@@ -10,9 +10,10 @@
 # PRIVATE subnet, and this host deliberately sits in a public one so the
 # desktop is reachable without a tunnel.
 #
-# To move to a bastion topology, put the instance in vm-subnet-1 (which already
-# exists, with NAT egress) and add an oci_bastion_bastion plus a port-forward
-# session. The address plan in 01-core was cut with that in mind.
+# To move to a bastion topology you would add a private subnet with NAT egress,
+# put the instance there, and add an oci_bastion_bastion plus a port-forward
+# session. 01-core deliberately does NOT carry that subnet up front -- it was
+# there once, unused, along with a NAT gateway routing for nobody.
 # ==============================================================================
 
 set -euo pipefail
