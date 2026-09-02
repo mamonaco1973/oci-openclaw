@@ -92,6 +92,10 @@ variable "models" {
     alias   = string # what LiteLLM and OpenClaw call it
     model   = string # OCI Generative AI display name
     display = string # label in the OpenClaw model picker
+
+    # Optional per-model output-token ceiling. Set only where OCI rejects the
+    # default with a 400 "Invalid 'maxTokens'" — see genai-config.sh.
+    max_tokens = optional(number)
   }))
 
   default = [
@@ -104,6 +108,9 @@ variable "models" {
       alias   = "llama-scout"
       model   = "meta.llama-4-scout-17b-16e-instruct"
       display = "Llama 4 Scout (OCI)"
+
+      # OCI caps Scout at 4096 output tokens and 400s anything larger.
+      max_tokens = 4096
     },
     {
       alias   = "gpt-oss-120b"

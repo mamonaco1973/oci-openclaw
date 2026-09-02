@@ -173,6 +173,9 @@ model_list:
       oci_tenancy: os.environ/OCI_TENANCY
       oci_key_file: os.environ/OCI_KEY_FILE
       oci_compartment_id: os.environ/OCI_COMPARTMENT_ID
+%{ if m.max_tokens != null ~}
+      max_tokens: ${m.max_tokens}
+%{ endif ~}
 
 %{ endfor ~}
 litellm_settings:

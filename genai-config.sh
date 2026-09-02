@@ -93,11 +93,27 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Models: "<alias>|<oci-model-name>|<display name>"
+# Models: "<alias>|<oci-model-name>|<display name>[|<max output tokens>]"
 # ------------------------------------------------------------------------------
+#
+# The 4th field is optional and caps output tokens for that model only.
+#
+# OCI enforces a per-model maxTokens ceiling and rejects anything above it with
+# a 400 -- "Invalid 'maxTokens': Value is greater than maximum: 4096".  LiteLLM
+# retries, fails, and returns a 500, which OpenClaw then reports as "request
+# timed out".  Nothing about that message points at the real cause, and a small
+# hand-rolled curl still succeeds, so this is easy to misdiagnose as a slow or
+# unavailable model.  Observed on llama-scout 2026-09-02.
+#
+# Setting max_tokens here writes it into litellm_params, and litellm_params
+# override what the client asked for -- so OpenClaw's larger request is clamped
+# rather than rejected.
+#
+# Leave the field off unless a model actually rejects the default: the cap is
+# a ceiling on every reply that model can produce.
 GENAI_MODELS=(
   "llama-maverick|meta.llama-4-maverick-17b-128e-instruct-fp8|Llama 4 Maverick (OCI)"
-  "llama-scout|meta.llama-4-scout-17b-16e-instruct|Llama 4 Scout (OCI)"
+  "llama-scout|meta.llama-4-scout-17b-16e-instruct|Llama 4 Scout (OCI)|4096"
   "gpt-oss-120b|openai.gpt-oss-120b|GPT-OSS 120B (OCI)"
   "grok-4|xai.grok-4.20-non-reasoning|Grok 4 (OCI)"
 )
@@ -121,14 +137,18 @@ export OCI_REGION="${OCI_REGION:-us-chicago-1}"
 # Built with jq rather than string concatenation so a display name containing a
 # quote or a backslash cannot produce malformed JSON.
 genai_models_json() {
-  local entry alias model display
+  local entry alias model display maxtok
   for entry in "${GENAI_MODELS[@]}"; do
-    IFS='|' read -r alias model display <<< "${entry}"
+    IFS='|' read -r alias model display maxtok <<< "${entry}"
+    # max_tokens must cross as a JSON number or null, never the string "",
+    # because Terraform types it as optional(number).
     jq -n \
       --arg alias   "${alias}" \
       --arg model   "${model}" \
       --arg display "${display}" \
-      '{alias: $alias, model: $model, display: $display}'
+      --arg maxtok  "${maxtok:-}" \
+      '{alias: $alias, model: $model, display: $display,
+        max_tokens: (if $maxtok == "" then null else ($maxtok | tonumber) end)}'
   done | jq -s '.'
 }
 
