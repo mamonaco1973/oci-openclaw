@@ -96,6 +96,11 @@ variable "models" {
     # Optional per-model output-token ceiling. Set only where OCI rejects the
     # default with a 400 "Invalid 'maxTokens'" — see genai-config.sh.
     max_tokens = optional(number)
+
+    # Set false to make LiteLLM fetch the whole reply and chunk it locally
+    # instead of streaming from OCI — works around a chunk-parse crash in the
+    # OCI streaming adapter. See genai-config.sh.
+    native_streaming = optional(bool)
   }))
 
   default = [
@@ -103,6 +108,13 @@ variable "models" {
       alias   = "llama-maverick"
       model   = "meta.llama-4-maverick-17b-128e-instruct-fp8"
       display = "Llama 4 Maverick (OCI)"
+
+      # OCI caps Maverick at 4096 output tokens and 400s anything larger.
+      max_tokens = 4096
+
+      # Streaming from OCI dies mid-reply with "Chunk cannot be parsed as
+      # JSON"; the UI calls that a timeout. Fetch whole, chunk locally.
+      native_streaming = false
     },
     {
       alias   = "llama-scout"

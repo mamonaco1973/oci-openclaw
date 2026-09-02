@@ -104,8 +104,21 @@ resource "oci_core_instance" "openclaw" {
       # single opaque token: raw JSON interpolated into bash breaks the moment
       # a display name contains an apostrophe, and base64 output is
       # alphanumeric plus +/= so no quoting case exists at all.
-      models        = var.models
-      models_b64    = base64encode(jsonencode([for m in var.models : { id = m.alias, name = m.display }]))
+      models = var.models
+
+      # maxTokens is merged in only where the model declares one. OpenClaw
+      # stamps every model it registers with maxTokens 8192, and sends that on
+      # each request; OCI 400s anything above a model's own ceiling (4096 for
+      # both Meta models), which surfaces in the UI as "request timed out".
+      # Setting it here is what actually fixes it -- the ceiling has to be
+      # lowered on the CLIENT. A max_tokens in the LiteLLM model_list is only
+      # a default and loses to the value OpenClaw sends.
+      models_b64 = base64encode(jsonencode([
+        for m in var.models : merge(
+          { id = m.alias, name = m.display },
+          m.max_tokens == null ? {} : { maxTokens = m.max_tokens }
+        )
+      ]))
       primary_alias = var.primary_alias
     }))
   }
