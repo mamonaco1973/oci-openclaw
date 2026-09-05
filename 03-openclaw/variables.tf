@@ -130,9 +130,9 @@ variable "models" {
       display = "GPT-OSS 120B (OCI)"
     },
     {
-      alias   = "grok-4"
-      model   = "xai.grok-4.20-non-reasoning"
-      display = "Grok 4 (OCI)"
+      alias   = "gpt-oss-20b"
+      model   = "openai.gpt-oss-20b"
+      display = "GPT-OSS 20B (OCI)"
     },
   ]
 

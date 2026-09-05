@@ -257,12 +257,12 @@ as an array — **any number from 1 upward**, and nothing else in the project
 needs changing:
 
 ```bash
-# "<alias>|<oci-model-name>|<display name>"
+# "<alias>|<oci-model-name>|<display name>[|<max tokens>[|nostream]]"
 GENAI_MODELS=(
-  "llama-maverick|meta.llama-4-maverick-17b-128e-instruct-fp8|Llama 4 Maverick (OCI)"
-  "llama-scout|meta.llama-4-scout-17b-16e-instruct|Llama 4 Scout (OCI)"
+  "llama-maverick|meta.llama-4-maverick-17b-128e-instruct-fp8|Llama 4 Maverick (OCI)|4096|nostream"
+  "llama-scout|meta.llama-4-scout-17b-16e-instruct|Llama 4 Scout (OCI)|4096"
   "gpt-oss-120b|openai.gpt-oss-120b|GPT-OSS 120B (OCI)"
-  "grok-4|xai.grok-4.20-non-reasoning|Grok 4 (OCI)"
+  "gpt-oss-20b|openai.gpt-oss-20b|GPT-OSS 20B (OCI)"
 )
 
 GENAI_PRIMARY="gpt-oss-120b"     # agents default to this
@@ -278,7 +278,18 @@ list above is just the default — the four models it ships with:
 | `gpt-oss-120b` | `openai.gpt-oss-120b` | **primary** — fastest, and the one observed driving Exec |
 | `llama-scout` | `meta.llama-4-scout-17b-16e-instruct` | lower latency |
 | `llama-maverick` | `meta.llama-4-maverick-17b-128e-instruct-fp8` | returns tool_calls to curl, but narrates them in OpenClaw |
-| `grok-4` | `xai.grok-4.20-non-reasoning` | alternate vendor |
+| `gpt-oss-20b` | `openai.gpt-oss-20b` | smaller open-weight sibling |
+
+Two of the four carry extra fields, both worked out the hard way. The Meta
+models cap at 4096 output tokens where OpenClaw asks for 8192, and Maverick
+also trips a chunk-parse crash in LiteLLM's OCI streaming adapter. Both
+failures reach the UI as "request timed out", which points nowhere near either
+cause — see the comments in `genai-config.sh` before changing them.
+
+`grok-4` was in this list until 2026-09-02 and was removed: every call came
+back 429, the Generative AI service limit for that model in the tenancy. That
+is a quota, not a config error, so it needs a service-limit increase rather
+than a code change.
 
 **Why gpt-oss-120b is primary.** It is the fastest of the four *and* the one
 observed actually driving OpenClaw's Exec tool end to end.

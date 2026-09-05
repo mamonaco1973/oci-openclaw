@@ -66,6 +66,12 @@
 #     0.38s  xai.grok-4.20-non-reasoning
 #     0.57s  google.gemini-2.5-flash
 #
+# grok-4 was in the lineup and was REMOVED 2026-09-02: every call returned a
+# 429, "the OCI Generative AI service limit for this model has been reached".
+# That is a tenancy quota, not a config error -- no code change fixes it, only
+# a service-limit increase. It was replaced with openai.gpt-oss-20b, the other
+# open-weight model. Do not add grok back without checking the limit first.
+#
 # gpt-oss-120b is primary. It is the fastest of the four AND the one observed
 # actually driving OpenClaw's Exec tool end to end on a live box.
 #
@@ -109,7 +115,7 @@
 # LiteLLM retries, fails, returns a 500, and OpenClaw reports "request timed
 # out".  Nothing in that message points at the real cause, and a small curl
 # still succeeds, so it reads like a slow or unavailable model.  Both Meta
-# models cap at 4096; gpt-oss and grok accepted 100000.  Measured 2026-09-02.
+# models cap at 4096; gpt-oss-120b accepted 100000.  Measured 2026-09-02.
 #
 # This value is written into the OpenClaw PROVIDER config (models[].maxTokens),
 # not the LiteLLM model_list.  That distinction cost an evening: a max_tokens
@@ -144,7 +150,7 @@ GENAI_MODELS=(
   "llama-maverick|meta.llama-4-maverick-17b-128e-instruct-fp8|Llama 4 Maverick (OCI)|4096|nostream"
   "llama-scout|meta.llama-4-scout-17b-16e-instruct|Llama 4 Scout (OCI)|4096"
   "gpt-oss-120b|openai.gpt-oss-120b|GPT-OSS 120B (OCI)"
-  "grok-4|xai.grok-4.20-non-reasoning|Grok 4 (OCI)"
+  "gpt-oss-20b|openai.gpt-oss-20b|GPT-OSS 20B (OCI)"
 )
 
 # Alias agents default to. Must be one of the aliases above, and should be a
