@@ -5,8 +5,8 @@ an Ubuntu 24.04 compute instance running **OpenClaw** (an AI coding agent)
 behind a **LiteLLM proxy** pointed at **OCI Generative AI**. You RDP into an
 LXQt desktop and drive the agent from Chrome.
 
-This is the Oracle port of [`aws-openclaw`](../../aws-openclaw), alongside
-[`azure-openclaw`](../../azure-openclaw).
+This is the Oracle port of [`aws-openclaw`](https://github.com/mamonaco1973/aws-openclaw), alongside
+[`azure-openclaw`](https://github.com/mamonaco1973/azure-openclaw).
 
 ---
 
@@ -29,7 +29,12 @@ This is the Oracle port of [`aws-openclaw`](../../aws-openclaw), alongside
 
 ## Architecture
 
-![oci-openclaw](oci-openclaw.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.svg">
+  <img alt="A user connects over RDP on port 3389 to openclaw-host, a VM.Standard.E4.Flex instance in us-chicago-1 booted from the Packer-built openclaw-image (Ubuntu 24.04 with an LXQt desktop). On the desktop, the user opens the OpenClaw gateway at localhost:18789 in Chrome; it sends prompts to a LiteLLM proxy on localhost:4000, which calls OCI Generative AI with the openclaw-svc user's API key, the only grant that key has. Commands the agent runs through Exec use the OCI CLI with the instance principal of the openclaw-dg dynamic group, which can read the compartment and usage reports but has no Generative AI access, so the agent cannot bypass the proxy." src="architecture-light.svg">
+</picture>
+
+Regenerate with `python3 make_diagram.py`.
 
 The OpenClaw gateway binds **loopback only**. There is no inbound path to port
 18789 — the UI is reachable from inside the RDP session and nowhere else.
@@ -362,8 +367,6 @@ while leaving billable resources running.
   `tool_calls` array through LiteLLM's `oci/` provider. Re-run the curl that
   `validate.sh` prints after any model change — chat working does not imply
   tool calling works.
-- **No architecture diagram yet.** The AWS `.drawio`/`.png` were removed rather
-  than left describing the wrong cloud.
 - `terraform validate` cannot run on the authoring workstation — the provider
   plugins crash there. Both modules have since applied cleanly end to end on a
   real deploy.
